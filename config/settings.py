@@ -461,14 +461,9 @@ if YTDLP_COOKIES_BASE64 and not YTDLP_COOKIES_FILE:
     except Exception:
         YTDLP_COOKIES_FILE = ""
 
-# Local default: if still no cookies file, try Chrome (dev machines only)
-if (
-    not YTDLP_COOKIES_FILE
-    and not YTDLP_COOKIES_FROM_BROWSER
-    and DEBUG
-    and not IS_RENDER
-):
-    YTDLP_COOKIES_FROM_BROWSER = "chrome"
+# Do NOT auto-enable cookies-from-browser: on modern Chrome (Windows) it often
+# fails with DPAPI / app-bound encryption and breaks extraction entirely.
+# Prefer secrets/cookies.txt or YTDLP_COOKIES_BASE64 (see docs/YOUTUBE_COOKIES.md).
 
 # Legal notice – respect ToS and copyright
 DOWNLOAD_DISCLAIMER = (

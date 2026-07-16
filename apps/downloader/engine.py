@@ -646,12 +646,11 @@ class DownloadEngine:
             "allow_unplayable_formats": False,
             # Prefer ffmpeg for merge
             "merge_output_format": "mp4",
-            # Reduce anonymous bot challenges (YouTube still may require cookies)
+            # Prefer mobile/TV clients — less likely to hit the "not a bot" wall
+            # than "web". Cookies still recommended on cloud IPs (Render).
             "extractor_args": {
                 "youtube": {
-                    # Prefer clients less likely to hit the "sign in / not a bot" wall
-                    "player_client": ["android", "web"],
-                    "player_skip": ["webpage", "configs"],
+                    "player_client": ["android", "ios", "tv_embedded", "mweb"],
                 }
             },
             "http_headers": {
@@ -711,11 +710,17 @@ def humanize_ytdlp_error(exc: BaseException) -> str:
     """Map common yt-dlp errors to user-facing guidance."""
     msg = str(exc)
     low = msg.lower()
-    if "sign in to confirm" in low or "not a bot" in low or "cookies-from-browser" in low:
+    if (
+        "sign in to confirm" in low
+        or "not a bot" in low
+        or "cookies-from-browser" in low
+        or "failed to decrypt with dpapi" in low
+    ):
         return (
             "YouTube is blocking this server (bot check). "
-            "An admin must configure YouTube cookies: set YTDLP_COOKIES_FILE "
-            "or YTDLP_COOKIES_FROM_BROWSER. "
+            "Upload YouTube cookies: put Netscape cookies.txt in secrets/cookies.txt, "
+            "or set YTDLP_COOKIES_BASE64 on Render (Settings → Environment), "
+            "or use Settings → YouTube cookies in the app. "
             "See docs/YOUTUBE_COOKIES.md"
         )
     if "private video" in low or "login required" in low:
