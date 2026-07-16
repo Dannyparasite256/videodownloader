@@ -38,7 +38,7 @@ bleach>=6.1.0
 cryptography>=42.0.0
 
 # Media / Download Engine
-yt-dlp>=2024.8.0
+yt-dlp>=2025.1.0
 Pillow>=10.3.0
 qrcode[pil]>=7.4.0
 

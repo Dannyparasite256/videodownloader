@@ -415,6 +415,38 @@ DOWNLOAD_EXPIRY_DAYS = env.int("DOWNLOAD_EXPIRY_DAYS", default=7)
 GUEST_MAX_DOWNLOADS_PER_DAY = env.int("GUEST_MAX_DOWNLOADS_PER_DAY", default=5)
 USER_STORAGE_QUOTA_MB = env.int("USER_STORAGE_QUOTA_MB", default=5120)
 
+# YouTube often requires browser cookies on cloud IPs ("Sign in to confirm you're not a bot").
+# Set YTDLP_COOKIES_FILE to a Netscape cookies.txt path, or YTDLP_COOKIES_FROM_BROWSER=chrome (local only).
+# Optional: YTDLP_COOKIES_BASE64 = base64 of cookies.txt (written to a temp file at startup).
+YTDLP_COOKIES_FILE = env("YTDLP_COOKIES_FILE", default="")
+YTDLP_COOKIES_FROM_BROWSER = env("YTDLP_COOKIES_FROM_BROWSER", default="")
+YTDLP_COOKIES_BASE64 = env("YTDLP_COOKIES_BASE64", default="")
+YTDLP_USER_AGENT = env(
+    "YTDLP_USER_AGENT",
+    default=(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
+)
+
+if YTDLP_COOKIES_BASE64 and not YTDLP_COOKIES_FILE:
+    import base64
+    import tempfile
+
+    try:
+        raw = base64.b64decode(YTDLP_COOKIES_BASE64)
+        cookie_path = Path(tempfile.gettempdir()) / "ytdlp_cookies.txt"
+        cookie_path.write_bytes(raw)
+        try:
+            os.chmod(cookie_path, 0o600)
+        except OSError:
+            pass
+        YTDLP_COOKIES_FILE = str(cookie_path)
+    except Exception:
+        # Leave empty; engine will log if misconfigured
+        YTDLP_COOKIES_FILE = ""
+
 # Legal notice – respect ToS and copyright
 DOWNLOAD_DISCLAIMER = (
     "Only download content you have the right to download. "

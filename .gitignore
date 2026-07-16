@@ -85,3 +85,6 @@ package-lock.json
 # Secrets
 secrets/
 *.key
+cookies.txt
+**/cookies.txt
+*cookies*.txt

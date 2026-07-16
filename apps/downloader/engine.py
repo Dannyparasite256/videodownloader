@@ -633,7 +633,7 @@ class DownloadEngine:
             return ""
 
     def _base_opts(self) -> dict[str, Any]:
-        return {
+        opts: dict[str, Any] = {
             "socket_timeout": getattr(settings, "YTDLP_SOCKET_TIMEOUT", 30),
             "retries": getattr(settings, "YTDLP_RETRIES", 3),
             "fragment_retries": 10,
@@ -646,9 +646,76 @@ class DownloadEngine:
             "allow_unplayable_formats": False,
             # Prefer ffmpeg for merge
             "merge_output_format": "mp4",
+            # Reduce anonymous bot challenges (YouTube still may require cookies)
+            "extractor_args": {
+                "youtube": {
+                    # Prefer clients less likely to hit the "sign in / not a bot" wall
+                    "player_client": ["android", "web"],
+                    "player_skip": ["webpage", "configs"],
+                }
+            },
+            "http_headers": {
+                "User-Agent": getattr(
+                    settings,
+                    "YTDLP_USER_AGENT",
+                    (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/131.0.0.0 Safari/537.36"
+                    ),
+                ),
+                "Accept-Language": "en-US,en;q=0.9",
+            },
         }
+
+        # Cookies: Netscape cookies.txt (recommended for servers / Render)
+        cookiefile = getattr(settings, "YTDLP_COOKIES_FILE", "") or ""
+        if cookiefile:
+            path = Path(cookiefile)
+            if path.is_file():
+                opts["cookiefile"] = str(path)
+                logger.info("yt-dlp using cookies file %s", path)
+            else:
+                logger.warning("YTDLP_COOKIES_FILE set but not found: %s", path)
+
+        # Local/dev only: pull cookies from an installed browser profile
+        browser = getattr(settings, "YTDLP_COOKIES_FROM_BROWSER", "") or ""
+        if browser and "cookiefile" not in opts:
+            # Format: "chrome" or "chrome:Profile 1"
+            parts = browser.split(":", 1)
+            if len(parts) == 2:
+                opts["cookiesfrombrowser"] = (parts[0].strip(), parts[1].strip(), None, None)
+            else:
+                opts["cookiesfrombrowser"] = (parts[0].strip(), None, None, None)
+            logger.info("yt-dlp using cookies from browser: %s", browser)
+
+        return opts
 
 
 def ensure_ffmpeg() -> bool:
     """Return True if ffmpeg is available on PATH."""
     return shutil.which("ffmpeg") is not None
+
+
+def humanize_ytdlp_error(exc: BaseException) -> str:
+    """Map common yt-dlp errors to user-facing guidance."""
+    msg = str(exc)
+    low = msg.lower()
+    if "sign in to confirm" in low or "not a bot" in low or "cookies-from-browser" in low:
+        return (
+            "YouTube is blocking this server (bot check). "
+            "An admin must configure YouTube cookies: set YTDLP_COOKIES_FILE "
+            "or YTDLP_COOKIES_FROM_BROWSER. "
+            "See docs/YOUTUBE_COOKIES.md"
+        )
+    if "private video" in low or "login required" in low:
+        return "This video is private or requires login. It cannot be downloaded without permission."
+    if "video unavailable" in low:
+        return "This video is unavailable (removed, region-locked, or restricted)."
+    if "unsupported url" in low:
+        return "This site or URL is not supported."
+    # Trim noisy prefixes
+    cleaned = re.sub(r"^ERROR:\s*", "", msg).strip()
+    if len(cleaned) > 400:
+        cleaned = cleaned[:400] + "…"
+    return cleaned or "Could not fetch video information."

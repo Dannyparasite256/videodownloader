@@ -62,11 +62,14 @@ class DownloadService:
         try:
             meta: VideoMetadata = engine.extract_metadata(url)
         except Exception as exc:
+            from apps.downloader.engine import humanize_ytdlp_error
+
+            friendly = humanize_ytdlp_error(exc)
             logger.warning("Metadata extraction failed for %s: %s", url, exc)
-            raise DownloadServiceError(
-                f"Could not fetch video information: {exc}",
-                code="metadata_failed",
-            ) from exc
+            code = "metadata_failed"
+            if "bot" in friendly.lower() or "cookies" in friendly.lower():
+                code = "youtube_bot"
+            raise DownloadServiceError(friendly, code=code) from exc
 
         data = meta.to_dict()
         cache.set(cache_key, data, timeout=300)
