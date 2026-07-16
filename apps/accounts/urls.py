@@ -12,6 +12,7 @@ urlpatterns = [
     path("logout/", views.logout_view, name="logout"),
     path("profile/", views.profile, name="profile"),
     path("settings/", views.settings_view, name="settings"),
+    path("settings/youtube-cookies/", views.upload_youtube_cookies, name="upload_youtube_cookies"),
     path("api-keys/create/", views.create_api_key, name="create_api_key"),
     path("api-keys/<uuid:key_id>/revoke/", views.revoke_api_key, name="revoke_api_key"),
     path(

@@ -74,10 +74,70 @@ def profile(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def settings_view(request: HttpRequest) -> HttpResponse:
-    return render(request, "accounts/settings.html", {
-        "api_keys": request.user.api_keys.filter(is_active=True),
-        "activity": request.user.activity_logs.all()[:20],
-    })
+    from pathlib import Path
+
+    from django.conf import settings as dj_settings
+
+    cookie_path = Path(dj_settings.BASE_DIR) / "secrets" / "cookies.txt"
+    return render(
+        request,
+        "accounts/settings.html",
+        {
+            "api_keys": request.user.api_keys.filter(is_active=True),
+            "activity": request.user.activity_logs.all()[:20],
+            "can_upload_cookies": request.user.is_staff or dj_settings.DEBUG,
+            "cookies_configured": cookie_path.is_file() and cookie_path.stat().st_size > 32,
+            "cookies_path": str(cookie_path),
+        },
+    )
+
+
+@login_required
+@require_POST
+def upload_youtube_cookies(request: HttpRequest) -> HttpResponse:
+    """Staff (or DEBUG) upload of Netscape cookies.txt for yt-dlp / YouTube bot checks."""
+    from pathlib import Path
+
+    from django.conf import settings as dj_settings
+    from django.contrib import messages
+
+    if not (request.user.is_staff or dj_settings.DEBUG):
+        messages.error(request, "Only staff can upload YouTube cookies.")
+        return redirect("accounts:settings")
+
+    f = request.FILES.get("cookies_file")
+    if not f:
+        messages.error(request, "Choose a cookies.txt file to upload.")
+        return redirect("accounts:settings")
+
+    raw = f.read()
+    try:
+        text = raw.decode("utf-8", errors="replace")
+    except Exception:
+        text = ""
+    if "youtube" not in text.lower() and "# netscape" not in text.lower()[:200].lower():
+        # still allow if it looks like cookie TSV
+        if text.count("\t") < 3:
+            messages.error(
+                request,
+                "That file does not look like a Netscape cookies.txt export.",
+            )
+            return redirect("accounts:settings")
+
+    dest_dir = Path(dj_settings.BASE_DIR) / "secrets"
+    dest_dir.mkdir(exist_ok=True)
+    dest = dest_dir / "cookies.txt"
+    dest.write_bytes(raw)
+    try:
+        dest.chmod(0o600)
+    except OSError:
+        pass
+
+    messages.success(
+        request,
+        "YouTube cookies saved. Try Analyze on a YouTube link again (no restart needed).",
+    )
+    return redirect("accounts:settings")
 
 
 @login_required

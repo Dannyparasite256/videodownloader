@@ -669,14 +669,24 @@ class DownloadEngine:
         }
 
         # Cookies: Netscape cookies.txt (recommended for servers / Render)
+        # Always re-check secrets/cookies.txt so admin upload works without restart.
         cookiefile = getattr(settings, "YTDLP_COOKIES_FILE", "") or ""
+        candidates = []
         if cookiefile:
-            path = Path(cookiefile)
-            if path.is_file():
-                opts["cookiefile"] = str(path)
-                logger.info("yt-dlp using cookies file %s", path)
-            else:
-                logger.warning("YTDLP_COOKIES_FILE set but not found: %s", path)
+            candidates.append(Path(cookiefile))
+        base = Path(getattr(settings, "BASE_DIR", Path.cwd()))
+        candidates.extend(
+            [
+                base / "secrets" / "cookies.txt",
+                base / "cookies.txt",
+            ]
+        )
+        resolved = next((p for p in candidates if p.is_file() and p.stat().st_size > 32), None)
+        if resolved:
+            opts["cookiefile"] = str(resolved)
+            logger.debug("yt-dlp using cookies file %s", resolved)
+        elif cookiefile:
+            logger.warning("YTDLP_COOKIES_FILE set but not found: %s", cookiefile)
 
         # Local/dev only: pull cookies from an installed browser profile
         browser = getattr(settings, "YTDLP_COOKIES_FROM_BROWSER", "") or ""
