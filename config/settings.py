@@ -65,6 +65,12 @@ RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
 if not RENDER_EXTERNAL_URL and RENDER_EXTERNAL_HOSTNAME:
     RENDER_EXTERNAL_URL = f"https://{RENDER_EXTERNAL_HOSTNAME}"
 
+# Free web plan: no disk, sleeps after idle, ~512MB RAM — tune for survival
+RENDER_FREE_TIER = env.bool(
+    "RENDER_FREE_TIER",
+    default=IS_RENDER and env.bool("FORCE_SQLITE", default=False),
+)
+
 if IS_RENDER:
     # Hosts
     if RENDER_EXTERNAL_HOSTNAME and RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
@@ -82,6 +88,10 @@ if IS_RENDER:
     ):
         if _origin not in CSRF_TRUSTED_ORIGINS:
             CSRF_TRUSTED_ORIGINS.append(_origin)
+    # Free-tier defaults (override with env if needed)
+    if RENDER_FREE_TIER:
+        os.environ.setdefault("CELERY_TASK_ALWAYS_EAGER", "True")
+        os.environ.setdefault("FORCE_SQLITE", "True")
 # ---------------------------------------------------------------------------
 # Applications
 # ---------------------------------------------------------------------------
@@ -446,11 +456,23 @@ SPECTACULAR_SETTINGS = {
 # ---------------------------------------------------------------------------
 # Download Engine
 # ---------------------------------------------------------------------------
-MAX_CONCURRENT_DOWNLOADS = env("MAX_CONCURRENT_DOWNLOADS")
-MAX_DOWNLOAD_SIZE_MB = env("MAX_DOWNLOAD_SIZE_MB")
+MAX_CONCURRENT_DOWNLOADS = env.int(
+    "MAX_CONCURRENT_DOWNLOADS",
+    default=1 if RENDER_FREE_TIER else 5,
+)
+MAX_DOWNLOAD_SIZE_MB = env.int(
+    "MAX_DOWNLOAD_SIZE_MB",
+    default=512 if RENDER_FREE_TIER else 2048,
+)
 DEFAULT_BANDWIDTH_LIMIT_KBPS = env("DEFAULT_BANDWIDTH_LIMIT_KBPS")
-YTDLP_SOCKET_TIMEOUT = env("YTDLP_SOCKET_TIMEOUT")
-YTDLP_RETRIES = env("YTDLP_RETRIES")
+YTDLP_SOCKET_TIMEOUT = env.int(
+    "YTDLP_SOCKET_TIMEOUT",
+    default=20 if RENDER_FREE_TIER else 30,
+)
+YTDLP_RETRIES = env.int(
+    "YTDLP_RETRIES",
+    default=2 if RENDER_FREE_TIER else 3,
+)
 DOWNLOAD_EXPIRY_DAYS = env.int("DOWNLOAD_EXPIRY_DAYS", default=7)
 GUEST_MAX_DOWNLOADS_PER_DAY = env.int("GUEST_MAX_DOWNLOADS_PER_DAY", default=5)
 USER_STORAGE_QUOTA_MB = env.int("USER_STORAGE_QUOTA_MB", default=5120)

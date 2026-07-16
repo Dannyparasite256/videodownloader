@@ -647,14 +647,22 @@ class DownloadEngine:
             # Prefer ffmpeg for merge
             "merge_output_format": "mp4",
             # Prefer mobile/TV clients — less likely to hit the "not a bot" wall
-            # than "web". Cookies still recommended on cloud IPs (Render).
+            # than "web". Cookies still required on cloud IPs (Render free).
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android", "ios", "tv_embedded", "mweb", "web"],
+                    "player_client": (
+                        ["android", "ios", "mweb"]
+                        if getattr(settings, "RENDER_FREE_TIER", False)
+                        else ["android", "ios", "tv_embedded", "mweb", "web"]
+                    ),
                 }
             },
             # Required for current YouTube JS challenges (formats missing without this)
             "remote_components": {"ejs:github"},
+            # Free Render OOM protection: fewer parallel fragment downloads
+            "concurrent_fragment_downloads": (
+                1 if getattr(settings, "RENDER_FREE_TIER", False) else 4
+            ),
             "http_headers": {
                 "User-Agent": getattr(
                     settings,
