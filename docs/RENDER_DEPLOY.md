@@ -50,7 +50,17 @@ python manage.py createsuperuser
 - Health: `https://YOUR-URL/api/v1/health/`
 - Admin: `https://YOUR-URL/admin/`
 
-### 6. Test a download
+### 6. YouTube cookies (needed for most YouTube links on Render)
+
+Cloud IPs often get: *“Sign in to confirm you’re not a bot”*.
+
+1. Export YouTube cookies on your PC (Netscape `cookies.txt`)
+2. Base64-encode the file and set env **`YTDLP_COOKIES_BASE64`** on **videodl-web**
+3. Redeploy the web service
+
+Full guide: [YOUTUBE_COOKIES.md](./YOUTUBE_COOKIES.md)
+
+### 7. Test a download
 1. Open the site  
 2. Paste a **public** video URL  
 3. Analyze → Download  
