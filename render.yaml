@@ -1,17 +1,16 @@
 # Render Blueprint — VideoDL Pro
 # https://render.com/docs/blueprint-spec
 #
-# Stack:
-#   - PostgreSQL
-#   - Redis (cache + WebSockets + Celery broker)
-#   - Web (Docker: Django + Daphne + FFmpeg)
+# Free-tier stack (no persistent disk — Free web services cannot attach disks):
+#   - PostgreSQL (free)
+#   - Redis / Key Value (free)
+#   - Web Docker (Django + Daphne + FFmpeg)
 #
-# Downloads run ON the web service (background threads) so files stay on the
-# same disk. A separate Celery worker cannot share Render disks with the web
-# service without object storage (S3). See docs/RENDER_DEPLOY.md.
+# Downloads run on the web service (eager Celery). Files are ephemeral on Free
+# (lost on spin-down/redeploy). Paid plan + disk if you need permanent files.
 #
-# After first deploy → Shell on videodl-web:
-#   python manage.py createsuperuser
+# Admin login (set once in Dashboard env, or use defaults below for first boot):
+#   DJANGO_SUPERUSER_USERNAME / DJANGO_SUPERUSER_PASSWORD / DJANGO_SUPERUSER_EMAIL
 
 databases:
   - name: videodl-db
@@ -46,11 +45,12 @@ services:
         value: ".onrender.com"
       - key: PYTHONUNBUFFERED
         value: "1"
+      # Ephemeral paths (Free tier has no persistent disk)
       - key: DOWNLOAD_ROOT
-        value: /var/data/downloads
+        value: /opt/render/project/src/media/downloads
       - key: MEDIA_ROOT
-        value: /var/data/media
-      # Run downloads in-process (threads) so files land on this service's disk
+        value: /opt/render/project/src/media
+      # Run downloads in-process so files stay on this service
       - key: CELERY_TASK_ALWAYS_EAGER
         value: "True"
       - key: DATABASE_URL
@@ -79,7 +79,10 @@ services:
           property: connectionString
       - key: SITE_NAME
         value: VideoDL Pro
-    disk:
-      name: videodl-media
-      mountPath: /var/data
-      sizeGB: 1
+      # First-boot admin (CHANGE after first login). Free tier has no Shell.
+      - key: DJANGO_SUPERUSER_USERNAME
+        value: admin
+      - key: DJANGO_SUPERUSER_EMAIL
+        value: admin@example.com
+      - key: DJANGO_SUPERUSER_PASSWORD
+        value: ChangeMeNow123!
