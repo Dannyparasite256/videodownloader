@@ -9,31 +9,40 @@
   </div>
 
   {% if can_upload_cookies %}
-  <section class="glass-strong rounded-3xl p-6">
-    <h2 class="font-semibold tracking-tight">YouTube cookies</h2>
+  <section class="glass-strong rounded-3xl p-6 border border-amber-500/30">
+    <h2 class="font-semibold tracking-tight text-amber-600 dark:text-amber-400">YouTube cookies (required on Render)</h2>
     <p class="text-sm text-slate-500 mt-1">
-      Required when YouTube shows “not a bot”. Export Netscape <code class="text-xs">cookies.txt</code>
-      while logged into YouTube, then upload here.
+      Cloud servers get blocked by YouTube until you upload a Netscape <code class="text-xs">cookies.txt</code>
+      from a browser where you are logged into YouTube.
     </p>
-    <p class="mt-2 text-xs">
+    <p class="mt-3 text-sm">
       Status:
       {% if cookies_configured %}
-        <span class="text-emerald-500 font-semibold">configured</span>
+        <span class="rounded-full bg-emerald-500/15 px-2.5 py-1 text-emerald-600 dark:text-emerald-400 font-semibold">configured ✓</span>
       {% else %}
-        <span class="text-amber-500 font-semibold">not configured</span>
+        <span class="rounded-full bg-amber-500/15 px-2.5 py-1 text-amber-600 dark:text-amber-400 font-semibold">not configured — YouTube will fail</span>
       {% endif %}
     </p>
-    <ol class="mt-3 text-sm text-slate-500 list-decimal pl-5 space-y-1">
-      <li>Install “Get cookies.txt LOCALLY” in Chrome/Edge</li>
-      <li>Open youtube.com and stay logged in</li>
-      <li>Export cookies → upload the file below</li>
+    <ol class="mt-4 text-sm text-slate-600 dark:text-slate-400 list-decimal pl-5 space-y-2">
+      <li>Chrome/Edge → open <strong>youtube.com</strong> and <strong>log in</strong></li>
+      <li>Install extension <strong>Get cookies.txt LOCALLY</strong></li>
+      <li>On youtube.com click the extension → <strong>Export</strong> → save <code class="text-xs">cookies.txt</code></li>
+      <li>Upload that file below → status must become <strong>configured</strong></li>
+      <li>Go home and Analyze your YouTube link again</li>
     </ol>
-    <form method="post" action="{% url 'accounts:upload_youtube_cookies' %}" enctype="multipart/form-data" class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+    <form method="post" action="{% url 'accounts:upload_youtube_cookies' %}" enctype="multipart/form-data" class="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
       {% csrf_token %}
       <input type="file" name="cookies_file" accept=".txt,text/plain" required class="form-input text-sm" />
       <button type="submit" class="btn-primary shrink-0">Upload cookies</button>
     </form>
-    <p class="mt-2 text-[0.7rem] text-slate-400">Stored only on this server at secrets/cookies.txt — never committed to Git.</p>
+    <p class="mt-3 text-[0.7rem] text-slate-400">
+      Free Render may wipe this file after sleep — upload again, or set env <code class="text-xs">YTDLP_COOKIES_BASE64</code> for a lasting fix.
+    </p>
+  </section>
+  {% else %}
+  <section class="glass rounded-3xl p-6">
+    <h2 class="font-semibold">YouTube cookies</h2>
+    <p class="text-sm text-slate-500 mt-1">Only staff/admin can upload cookies. Log in as admin.</p>
   </section>
   {% endif %}
 

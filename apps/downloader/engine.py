@@ -667,30 +667,15 @@ class DownloadEngine:
             },
         }
 
-        # Cookies: Netscape cookies.txt (recommended for servers / Render)
-        # Always re-check secrets/cookies.txt so admin upload works without restart.
-        cookiefile = getattr(settings, "YTDLP_COOKIES_FILE", "") or ""
-        candidates = []
-        if cookiefile:
-            candidates.append(Path(cookiefile))
-        base = Path(getattr(settings, "BASE_DIR", Path.cwd()))
-        candidates.extend(
-            [
-                base / "secrets" / "cookies.txt",
-                base / "cookies.txt",
-            ]
-        )
-        resolved = next((p for p in candidates if p.is_file() and p.stat().st_size > 32), None)
+        # Cookies: Netscape cookies.txt (required for YouTube on cloud / Render)
+        resolved = self._resolve_cookiefile()
         if resolved:
             opts["cookiefile"] = str(resolved)
-            logger.debug("yt-dlp using cookies file %s", resolved)
-        elif cookiefile:
-            logger.warning("YTDLP_COOKIES_FILE set but not found: %s", cookiefile)
+            logger.info("yt-dlp using cookies file %s (%s bytes)", resolved, resolved.stat().st_size)
 
         # Local/dev only: pull cookies from an installed browser profile
         browser = getattr(settings, "YTDLP_COOKIES_FROM_BROWSER", "") or ""
         if browser and "cookiefile" not in opts:
-            # Format: "chrome" or "chrome:Profile 1"
             parts = browser.split(":", 1)
             if len(parts) == 2:
                 opts["cookiesfrombrowser"] = (parts[0].strip(), parts[1].strip(), None, None)
@@ -699,6 +684,56 @@ class DownloadEngine:
             logger.info("yt-dlp using cookies from browser: %s", browser)
 
         return opts
+
+    @staticmethod
+    def _resolve_cookiefile() -> Path | None:
+        """Find or materialize a Netscape cookies.txt for yt-dlp."""
+        import base64
+
+        cookiefile = getattr(settings, "YTDLP_COOKIES_FILE", "") or ""
+        base = Path(getattr(settings, "BASE_DIR", Path.cwd()))
+        candidates = []
+        if cookiefile:
+            candidates.append(Path(cookiefile))
+        candidates.extend(
+            [
+                base / "secrets" / "cookies.txt",
+                base / "secrets" / "cookies.from_env.txt",
+                base / "cookies.txt",
+            ]
+        )
+        resolved = next((p for p in candidates if p.is_file() and p.stat().st_size > 32), None)
+        if resolved:
+            return resolved
+
+        # Re-hydrate from env on every request (survives free-tier restarts if env is set)
+        b64 = (getattr(settings, "YTDLP_COOKIES_BASE64", "") or os.environ.get("YTDLP_COOKIES_BASE64", "")).strip()
+        if not b64:
+            return None
+        try:
+            raw = base64.b64decode(b64)
+        except Exception:
+            try:
+                raw = base64.urlsafe_b64decode(b64 + "==")
+            except Exception:
+                logger.warning("YTDLP_COOKIES_BASE64 is not valid base64")
+                return None
+        if len(raw) < 32:
+            return None
+        secrets_dir = base / "secrets"
+        try:
+            secrets_dir.mkdir(parents=True, exist_ok=True)
+            dest = secrets_dir / "cookies.txt"
+            dest.write_bytes(raw)
+            try:
+                dest.chmod(0o600)
+            except OSError:
+                pass
+            logger.info("Wrote cookies from YTDLP_COOKIES_BASE64 (%s bytes)", len(raw))
+            return dest
+        except OSError as exc:
+            logger.warning("Could not write cookies file: %s", exc)
+            return None
 
 
 def ensure_ffmpeg() -> bool:
@@ -717,11 +752,11 @@ def humanize_ytdlp_error(exc: BaseException) -> str:
         or "failed to decrypt with dpapi" in low
     ):
         return (
-            "YouTube is blocking this server (bot check). "
-            "Upload YouTube cookies: put Netscape cookies.txt in secrets/cookies.txt, "
-            "or set YTDLP_COOKIES_BASE64 on Render (Settings → Environment), "
-            "or use Settings → YouTube cookies in the app. "
-            "See docs/YOUTUBE_COOKIES.md"
+            "YouTube is blocking this cloud server (bot check). "
+            "Fix: log into YouTube in Chrome → export Netscape cookies.txt "
+            "(extension “Get cookies.txt LOCALLY”) → open this site → Settings → "
+            "YouTube cookies → Upload. Or set YTDLP_COOKIES_BASE64 on Render. "
+            "Status must show “configured” before Analyze will work for YouTube."
         )
     if "private video" in low or "login required" in low:
         return "This video is private or requires login. It cannot be downloaded without permission."
