@@ -1,9 +1,40 @@
-{% extends "base.html" %}
-{% block title %}Bad request — {{ SITE_NAME }}{% endblock %}
-{% block content %}
-<div class="mx-auto max-w-lg py-24 text-center">
-  <p class="text-6xl font-extrabold text-rose-500">400</p>
-  <h1 class="mt-4 text-2xl font-bold">Bad request</h1>
-  <a href="{% url 'downloads:home' %}" class="btn-primary mt-8 inline-flex">Go home</a>
-</div>
-{% endblock %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bad request</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #06060a;
+      color: #e2e8f0;
+      text-align: center;
+      padding: 2rem;
+    }
+    h1 { font-size: 4rem; margin: 0; color: #f43f5e; }
+    p { color: #94a3b8; }
+    a {
+      display: inline-block;
+      margin-top: 1.5rem;
+      padding: 0.7rem 1.25rem;
+      border-radius: 0.75rem;
+      background: linear-gradient(135deg, #6366f1, #7c3aed);
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div>
+    <h1>400</h1>
+    <p>That request couldn’t be processed.</p>
+    <a href="/">Go home</a>
+  </div>
+</body>
+</html>

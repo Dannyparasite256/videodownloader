@@ -212,14 +212,21 @@ LOCALE_PATHS = [BASE_DIR / "locale"]
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
+# Production: hashed+compressed assets, but never 500 if a file is missing from the
+# collectstatic manifest (common after adding static/*.js without redeploying cleanly).
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
-        if not DEBUG
-        else "django.contrib.staticfiles.storage.StaticFilesStorage"
+        "BACKEND": (
+            "utils.storage.ForgivingManifestStaticFilesStorage"
+            if not DEBUG
+            else "django.contrib.staticfiles.storage.StaticFilesStorage"
+        )
     },
 }
+# WhiteNoise: same lenient behaviour when serving from the manifest
+WHITENOISE_MANIFEST_STRICT = False
+WHITENOISE_USE_FINDERS = DEBUG
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"

@@ -1,9 +1,40 @@
-{% extends "base.html" %}
-{% block title %}Forbidden — {{ SITE_NAME }}{% endblock %}
-{% block content %}
-<div class="mx-auto max-w-lg py-24 text-center">
-  <p class="text-6xl font-extrabold text-amber-500">403</p>
-  <h1 class="mt-4 text-2xl font-bold">Access denied</h1>
-  <a href="{% url 'downloads:home' %}" class="btn-primary mt-8 inline-flex">Go home</a>
-</div>
-{% endblock %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Forbidden</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #06060a;
+      color: #e2e8f0;
+      text-align: center;
+      padding: 2rem;
+    }
+    h1 { font-size: 4rem; margin: 0; color: #f59e0b; }
+    p { color: #94a3b8; }
+    a {
+      display: inline-block;
+      margin-top: 1.5rem;
+      padding: 0.7rem 1.25rem;
+      border-radius: 0.75rem;
+      background: linear-gradient(135deg, #6366f1, #7c3aed);
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div>
+    <h1>403</h1>
+    <p>You don’t have permission to view this page.</p>
+    <a href="/">Go home</a>
+  </div>
+</body>
+</html>

@@ -30,6 +30,15 @@ RUN mkdir -p /app/media/downloads /app/media/thumbnails /app/media/avatars /app/
     && useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app
 
+# Collect static at build time so WhiteNoise always has a full manifest
+# (includes js/theme-boot.js, css/app.css, etc.)
+ENV DJANGO_SETTINGS_MODULE=config.settings \
+    DJANGO_DEBUG=False \
+    DJANGO_SECRET_KEY=build-time-only-not-for-runtime \
+    DATABASE_URL=sqlite:////tmp/build.sqlite3
+RUN python manage.py collectstatic --noinput \
+    && chown -R appuser:appuser /app/staticfiles
+
 USER appuser
 
 EXPOSE 8000
