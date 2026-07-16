@@ -1,20 +1,15 @@
-# Render Blueprint — VideoDL Pro (Free tier, SQLite)
+# Render Blueprint — VideoDL Pro (Free tier, SQLite, no Redis required)
 # https://render.com/docs/blueprint-spec
 #
-# No managed Postgres (avoids "one free database" limit).
-# SQLite file is ephemeral on Free: lost on spin-down / redeploy.
-# Redis kept for cache/WebSockets if free Key Value is still available.
+# Minimal free stack to avoid:
+#   - free Postgres limit (1 per account)
+#   - free Redis limit (1 per account)
+#   - persistent disk (not allowed on free web)
 #
-# Login (change after first open):
-#   admin / ChangeMeNow123!
+# SQLite + media are ephemeral (reset on sleep/redeploy).
+# Login: admin / ChangeMeNow123!  (change after first login)
 
 services:
-  - type: redis
-    name: videodl-redis
-    plan: free
-    maxmemoryPolicy: allkeys-lru
-    ipAllowList: []
-
   - type: web
     name: videodl-web
     runtime: docker
@@ -35,35 +30,17 @@ services:
         value: ".onrender.com"
       - key: PYTHONUNBUFFERED
         value: "1"
-      # SQLite (no free Postgres required)
       - key: DATABASE_URL
         value: "sqlite:////app/db.sqlite3"
       - key: DOWNLOAD_ROOT
         value: /app/media/downloads
       - key: MEDIA_ROOT
         value: /app/media
+      # Downloads run in-process (no Celery worker / Redis needed)
       - key: CELERY_TASK_ALWAYS_EAGER
         value: "True"
       - key: REDIS_URL
-        fromService:
-          name: videodl-redis
-          type: redis
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          name: videodl-redis
-          type: redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          name: videodl-redis
-          type: redis
-          property: connectionString
-      - key: CHANNELS_REDIS_URL
-        fromService:
-          name: videodl-redis
-          type: redis
-          property: connectionString
+        value: "redis://127.0.0.1:6379/0"
       - key: SITE_NAME
         value: VideoDL Pro
       - key: DJANGO_SUPERUSER_USERNAME

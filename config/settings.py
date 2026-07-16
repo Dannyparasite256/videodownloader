@@ -40,6 +40,15 @@ CSRF_TRUSTED_ORIGINS = env.list(
     default=["http://localhost:8000", "http://127.0.0.1:8000"],
 )
 
+# ---------------------------------------------------------------------------
+# Multi-device access (phones, tablets, other PCs, public tunnel)
+# ---------------------------------------------------------------------------
+# When True (default for home hosting): accept any Host header so LAN IPs and
+# Cloudflare / trycloudflare hostnames work without editing .env every time.
+ALLOW_MULTI_DEVICE = env.bool("ALLOW_MULTI_DEVICE", default=True)
+if ALLOW_MULTI_DEVICE:
+    ALLOWED_HOSTS = ["*"]
+
 SITE_NAME = env("SITE_NAME", default="VideoDL Pro")
 SITE_URL = env("SITE_URL", default="http://localhost:8000")
 SITE_ID = 1
@@ -113,6 +122,7 @@ MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "middleware.multi_device.MultiDeviceCSRFMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -273,53 +283,55 @@ if IS_RENDER and Path("/var/data").is_dir():
 # On Render, one Redis URL is used for cache, Celery, and Channels unless overridden.
 REDIS_URL = env("REDIS_URL", default="redis://127.0.0.1:6379/0")
 
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": REDIS_URL,
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "SOCKET_CONNECT_TIMEOUT": 5,
-            "SOCKET_TIMEOUT": 5,
-            "IGNORE_EXCEPTIONS": True,
-        },
-        "KEY_PREFIX": "vdl",
-    }
-}
-
-# Fallback to local memory when Redis unavailable (dev)
-if DEBUG:
+def _redis_is_reachable(url: str, timeout: float = 1.5) -> bool:
     try:
-        import redis as _redis
+        import redis as _redis_lib
 
-        _r = _redis.from_url(REDIS_URL, socket_connect_timeout=1)
-        _r.ping()
+        _client = _redis_lib.from_url(url, socket_connect_timeout=timeout)
+        _client.ping()
+        return True
     except Exception:
-        CACHES = {
-            "default": {
-                "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-                "LOCATION": "vdl-local",
-            }
+        return False
+
+
+_redis_ok = _redis_is_reachable(REDIS_URL)
+
+if _redis_ok:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                "SOCKET_CONNECT_TIMEOUT": 5,
+                "SOCKET_TIMEOUT": 5,
+                "IGNORE_EXCEPTIONS": True,
+            },
+            "KEY_PREFIX": "vdl",
         }
+    }
+else:
+    # Free Render / offline Redis: keep the web process up
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "vdl-local",
+        }
+    }
 
 # ---------------------------------------------------------------------------
 # Channels (WebSockets)
 # ---------------------------------------------------------------------------
 CHANNELS_REDIS_URL = env("CHANNELS_REDIS_URL", default=REDIS_URL)
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [CHANNELS_REDIS_URL]},
+if _redis_ok or _redis_is_reachable(CHANNELS_REDIS_URL):
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [CHANNELS_REDIS_URL]},
+        }
     }
-}
-if DEBUG:
-    try:
-        import redis as _redis2
-
-        _r2 = _redis2.from_url(CHANNELS_REDIS_URL, socket_connect_timeout=1)
-        _r2.ping()
-    except Exception:
-        CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+else:
+    CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 
 # ---------------------------------------------------------------------------
 # Celery
@@ -338,17 +350,11 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_TASK_ACKS_LATE = True
 CELERY_RESULT_EXTENDED = True
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
-# Run tasks inline when Redis/broker is unavailable (local dev convenience)
+# Run tasks inline when Redis/broker is unavailable (local + free Render)
 CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 CELERY_TASK_EAGER_PROPAGATES = True
-if DEBUG and not CELERY_TASK_ALWAYS_EAGER:
-    try:
-        import redis as _redis_celery
-
-        _rc = _redis_celery.from_url(CELERY_BROKER_URL, socket_connect_timeout=1)
-        _rc.ping()
-    except Exception:
-        CELERY_TASK_ALWAYS_EAGER = True
+if not CELERY_TASK_ALWAYS_EAGER and not _redis_is_reachable(CELERY_BROKER_URL):
+    CELERY_TASK_ALWAYS_EAGER = True
 
 # ---------------------------------------------------------------------------
 # REST Framework
@@ -498,6 +504,11 @@ if not DEBUG:
 if IS_RENDER:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
+# Cloudflare Tunnel / reverse proxies terminate TLS and forward HTTP locally
+if ALLOW_MULTI_DEVICE or env.bool("BEHIND_PROXY", default=False):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
+
 AXES_FAILURE_LIMIT = 5
 AXES_COOLOFF_TIME = timedelta(minutes=30)
 AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
@@ -505,9 +516,12 @@ AXES_RESET_ON_SUCCESS = True
 
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
-    default=["http://localhost:8000", "http://127.0.0.1:8000"],
+    default=["http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:4000", "http://127.0.0.1:4000"],
 )
 CORS_ALLOW_CREDENTIALS = True
+# Home multi-device / tunnel: allow API clients from any device origin
+if ALLOW_MULTI_DEVICE:
+    CORS_ALLOW_ALL_ORIGINS = True
 
 # ---------------------------------------------------------------------------
 # Email
