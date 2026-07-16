@@ -71,11 +71,17 @@ if IS_RENDER:
         ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
     if ".onrender.com" not in ALLOWED_HOSTS and "*.onrender.com" not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(".onrender.com")
-    # CSRF / site URL
+    # CSRF / site URL (all common Render host patterns)
     if RENDER_EXTERNAL_URL:
         if RENDER_EXTERNAL_URL not in CSRF_TRUSTED_ORIGINS:
             CSRF_TRUSTED_ORIGINS.append(RENDER_EXTERNAL_URL)
         SITE_URL = env("SITE_URL", default=RENDER_EXTERNAL_URL)
+    for _origin in (
+        "https://videodl-web.onrender.com",
+        "https://*.onrender.com",
+    ):
+        if _origin not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(_origin)
 # ---------------------------------------------------------------------------
 # Applications
 # ---------------------------------------------------------------------------
@@ -177,7 +183,9 @@ if env.bool("FORCE_SQLITE", default=False) or (
 DATABASES = {"default": environ.Env.db_url_config(_db_url)}
 
 if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
-    DATABASES["default"]["OPTIONS"] = {"timeout": 20}
+    # Free Render runs downloads in background threads + HTTP → need long timeout
+    DATABASES["default"]["OPTIONS"] = {"timeout": 60}
+    DATABASES["default"]["ATOMIC_REQUESTS"] = False
 else:
     DATABASES["default"]["CONN_MAX_AGE"] = 60
     DATABASES["default"]["ATOMIC_REQUESTS"] = False
@@ -185,6 +193,24 @@ else:
     if IS_RENDER:
         DATABASES["default"].setdefault("OPTIONS", {})
         DATABASES["default"]["OPTIONS"].setdefault("sslmode", "require")
+
+
+# SQLite: WAL + busy timeout reduces "database is locked" → random 500s under threads
+from django.db.backends.signals import connection_created  # noqa: E402
+from django.dispatch import receiver  # noqa: E402
+
+
+@receiver(connection_created)
+def _sqlite_pragma(sender, connection, **kwargs):  # noqa: ARG001
+    if connection.vendor != "sqlite":
+        return
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA busy_timeout=60000;")
+            cursor.execute("PRAGMA synchronous=NORMAL;")
+    except Exception:
+        pass
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -549,7 +575,39 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@videodl.local")
 # Logging
 # ---------------------------------------------------------------------------
 LOG_DIR = BASE_DIR / "logs"
-LOG_DIR.mkdir(exist_ok=True)
+try:
+    LOG_DIR.mkdir(exist_ok=True)
+except OSError:
+    pass
+
+_log_handlers = ["console"]
+_handlers: dict = {
+    "console": {
+        "class": "logging.StreamHandler",
+        "formatter": "verbose",
+    },
+}
+# File logs can fail on read-only / free PaaS disks — keep console always
+if not IS_RENDER:
+    try:
+        LOG_DIR.mkdir(exist_ok=True)
+        _handlers["file"] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_DIR / "app.log"),
+            "maxBytes": 10 * 1024 * 1024,
+            "backupCount": 10,
+            "formatter": "json",
+        }
+        _handlers["download_file"] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_DIR / "downloads.log"),
+            "maxBytes": 10 * 1024 * 1024,
+            "backupCount": 10,
+            "formatter": "json",
+        }
+        _log_handlers = ["console", "file"]
+    except OSError:
+        _log_handlers = ["console"]
 
 LOGGING = {
     "version": 1,
@@ -563,43 +621,29 @@ LOGGING = {
             "()": "utils.logging.JSONFormatter",
         },
     },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "verbose",
-        },
-        "file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": LOG_DIR / "app.log",
-            "maxBytes": 10 * 1024 * 1024,
-            "backupCount": 10,
-            "formatter": "json",
-        },
-        "download_file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": LOG_DIR / "downloads.log",
-            "maxBytes": 10 * 1024 * 1024,
-            "backupCount": 10,
-            "formatter": "json",
-        },
-    },
+    "handlers": _handlers,
     "root": {
-        "handlers": ["console", "file"],
+        "handlers": _log_handlers,
         "level": "INFO",
     },
     "loggers": {
-        "django": {"handlers": ["console", "file"], "level": "INFO", "propagate": False},
+        "django": {"handlers": _log_handlers, "level": "INFO", "propagate": False},
+        "django.request": {
+            "handlers": _log_handlers,
+            "level": "ERROR",
+            "propagate": False,
+        },
         "apps.downloader": {
-            "handlers": ["console", "download_file"],
+            "handlers": _log_handlers + (["download_file"] if "download_file" in _handlers else []),
             "level": "DEBUG" if DEBUG else "INFO",
             "propagate": False,
         },
         "apps.downloads": {
-            "handlers": ["console", "download_file"],
+            "handlers": _log_handlers + (["download_file"] if "download_file" in _handlers else []),
             "level": "INFO",
             "propagate": False,
         },
-        "celery": {"handlers": ["console", "file"], "level": "INFO", "propagate": False},
+        "celery": {"handlers": _log_handlers, "level": "INFO", "propagate": False},
     },
 }
 
