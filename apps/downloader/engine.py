@@ -650,9 +650,11 @@ class DownloadEngine:
             # than "web". Cookies still recommended on cloud IPs (Render).
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android", "ios", "tv_embedded", "mweb"],
+                    "player_client": ["android", "ios", "tv_embedded", "mweb", "web"],
                 }
             },
+            # Required for current YouTube JS challenges (formats missing without this)
+            "remote_components": {"ejs:github"},
             "http_headers": {
                 "User-Agent": getattr(
                     settings,
