@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Forbidden — {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-lg py-24 text-center">
+  <p class="text-6xl font-extrabold text-amber-500">403</p>
+  <h1 class="mt-4 text-2xl font-bold">Access denied</h1>
+  <a href="{% url 'downloads:home' %}" class="btn-primary mt-8 inline-flex">Go home</a>
+</div>
+{% endblock %}

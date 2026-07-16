@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Server error — {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-lg py-24 text-center">
+  <p class="text-6xl font-extrabold text-rose-500">500</p>
+  <h1 class="mt-4 text-2xl font-bold">Something went wrong</h1>
+  <p class="mt-2 text-slate-500">We've logged the error. Please try again later.</p>
+  <a href="/" class="btn-primary mt-8 inline-flex">Go home</a>
+</div>
+{% endblock %}

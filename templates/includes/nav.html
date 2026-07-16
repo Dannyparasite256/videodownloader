@@ -1,0 +1,83 @@
+<header class="sticky top-0 z-50 px-3 pt-3 sm:px-4 sm:pt-3.5">
+  <nav class="nav-glass mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 rounded-2xl px-2.5 sm:h-[3.65rem] sm:px-3.5 lg:px-4" aria-label="Primary">
+    <a href="{% url 'downloads:home' %}" data-nav-link data-nav-match="home" class="group flex items-center gap-2.5 font-semibold tracking-tight pl-1">
+      <span class="relative flex h-8 w-8 items-center justify-center rounded-[0.65rem] bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-[0_0_24px_rgba(99,102,241,0.35)] transition-transform duration-300 group-hover:scale-105">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.25">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+        </svg>
+      </span>
+      <span class="hidden text-[0.92rem] sm:inline">{{ SITE_NAME }}</span>
+    </a>
+
+    <div class="hidden items-center gap-0.5 rounded-full p-1 md:flex glass-soft">
+      <a href="{% url 'downloads:home' %}" data-nav-link data-nav-match="home" class="nav-link {% if request.resolver_match.url_name == 'home' %}nav-link-active{% endif %}">Download</a>
+      <a href="{% url 'downloads:history' %}" data-nav-link data-nav-match="history" class="nav-link {% if request.resolver_match.url_name == 'history' or request.resolver_match.url_name == 'detail' %}nav-link-active{% endif %}">History</a>
+      {% if user.is_authenticated %}
+        <a href="{% url 'dashboard:index' %}" data-nav-link data-nav-match="dashboard" class="nav-link {% if request.resolver_match.app_name == 'dashboard' %}nav-link-active{% endif %}">Dashboard</a>
+        <a href="{% url 'downloads:files' %}" data-nav-link data-nav-match="files" class="nav-link {% if request.resolver_match.url_name == 'files' %}nav-link-active{% endif %}">Files</a>
+      {% endif %}
+      <a href="{% url 'swagger-ui' %}" data-nav-link data-nav-match="api" data-no-boost class="nav-link">API</a>
+    </div>
+
+    <div class="flex items-center gap-1 sm:gap-1.5">
+      <button type="button" class="btn-glass hidden sm:inline-flex" @click="openPalette()" aria-label="Command palette" title="⌘K">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+      </button>
+
+      <button type="button" @click="toggle()" class="btn-glass" :aria-label="dark ? 'Light mode' : 'Dark mode'">
+        <svg x-show="!dark" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+        <svg x-show="dark" x-cloak width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+      </button>
+
+      {% if user.is_authenticated %}
+        <a href="{% url 'notifications:list' %}" data-nav-link class="btn-glass" aria-label="Notifications">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+          </svg>
+        </a>
+        <div class="relative" x-data="{ open: false }">
+          <button type="button" @click="open = !open" class="flex items-center gap-2 rounded-xl px-1 py-1 transition hover:bg-white/40 dark:hover:bg-white/5">
+            <span class="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[0.7rem] font-bold text-white ring-2 ring-white/50 dark:ring-white/10">
+              {{ user.username|first|upper }}
+            </span>
+            <span class="hidden text-sm font-medium sm:inline pr-1">{{ user.username }}</span>
+          </button>
+          <div x-show="open" @click.outside="open = false" x-transition.opacity.duration.150ms class="absolute right-0 mt-2 w-52 glass-strong rounded-2xl py-1.5 overflow-hidden" style="display:none">
+            <a href="{% url 'accounts:profile' %}" data-nav-link class="dropdown-item">Profile</a>
+            <a href="{% url 'accounts:settings' %}" data-nav-link class="dropdown-item">Settings</a>
+            <a href="{% url 'dashboard:index' %}" data-nav-link data-nav-match="dashboard" class="dropdown-item">Dashboard</a>
+            <div class="my-1 border-t border-black/5 dark:border-white/10"></div>
+            <form method="post" action="{% url 'accounts:logout' %}" data-no-boost>{% csrf_token %}
+              <button type="submit" class="dropdown-item w-full text-left text-rose-500">Sign out</button>
+            </form>
+          </div>
+        </div>
+      {% else %}
+        <a href="{% url 'accounts:login' %}" data-nav-link class="btn-ghost text-sm hidden sm:inline-flex">Sign in</a>
+        <a href="{% url 'accounts:register' %}" data-nav-link class="btn-primary text-sm !py-2 !px-3">Get started</a>
+      {% endif %}
+
+      <div class="relative md:hidden" x-data="{ open: false }">
+        <button type="button" class="btn-glass" @click="open = !open" aria-label="Menu">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div x-show="open" @click.outside="open = false" x-transition.opacity.duration.150ms class="absolute right-0 mt-2 w-52 glass-strong rounded-2xl py-1.5" style="display:none">
+          <a href="{% url 'downloads:home' %}" data-nav-link data-nav-match="home" class="dropdown-item" @click="open=false">Download</a>
+          <a href="{% url 'downloads:history' %}" data-nav-link data-nav-match="history" class="dropdown-item" @click="open=false">History</a>
+          {% if user.is_authenticated %}
+            <a href="{% url 'dashboard:index' %}" data-nav-link data-nav-match="dashboard" class="dropdown-item" @click="open=false">Dashboard</a>
+            <a href="{% url 'downloads:files' %}" data-nav-link data-nav-match="files" class="dropdown-item" @click="open=false">Files</a>
+          {% else %}
+            <a href="{% url 'accounts:login' %}" data-nav-link class="dropdown-item">Sign in</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </nav>
+</header>

@@ -1,0 +1,23 @@
+<div class="mt-6 space-y-2">
+  {% for n in notifications %}
+    <div class="glass rounded-2xl p-4 {% if not n.is_read %}ring-1 ring-accent/30{% endif %}">
+      <div class="flex justify-between gap-3">
+        <div>
+          <p class="font-medium">{{ n.title }}</p>
+          <p class="text-sm text-slate-500 mt-0.5">{{ n.message }}</p>
+        </div>
+        {% if not n.is_read %}
+          <form method="post" action="{% url 'notifications:mark_read' n.id %}">
+            {% csrf_token %}
+            <button class="text-xs text-accent">Read</button>
+          </form>
+        {% endif %}
+      </div>
+      {% if n.link %}
+        <a href="{{ n.link }}" class="mt-2 inline-block text-xs text-accent hover:underline">Open</a>
+      {% endif %}
+    </div>
+  {% empty %}
+    <p class="text-slate-500 text-center py-12">You're all caught up.</p>
+  {% endfor %}
+</div>

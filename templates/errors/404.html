@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Not found — {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-lg py-24 text-center">
+  <p class="text-6xl font-extrabold bg-gradient-to-r from-indigo-500 to-fuchsia-500 bg-clip-text text-transparent">404</p>
+  <h1 class="mt-4 text-2xl font-bold">Page not found</h1>
+  <p class="mt-2 text-slate-500">That link doesn't lead anywhere.</p>
+  <a href="{% url 'downloads:home' %}" class="btn-primary mt-8 inline-flex">Go home</a>
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Register — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-md pt-10 sm:pt-16">
+  <div class="glass-strong rounded-[1.75rem] p-8 sm:p-9 animate-slide-up">
+    <h1 class="text-2xl font-semibold tracking-tight">Create account</h1>
+    <p class="mt-1.5 text-sm text-slate-500">Save downloads, API keys, and preferences.</p>
+
+    <form method="post" class="mt-7 space-y-4">
+      {% csrf_token %}
+      {% for field in form %}
+        <div>
+          <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.errors %}<p class="mt-1 text-xs text-rose-500">{{ field.errors|striptags }}</p>{% endif %}
+        </div>
+      {% endfor %}
+      <button type="submit" class="btn-primary w-full !py-3 mt-1">Get started</button>
+    </form>
+
+    <p class="mt-5 text-center text-sm">
+      Already have an account?
+      <a href="{% url 'accounts:login' %}" class="font-medium text-indigo-500 hover:text-indigo-400">Sign in</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

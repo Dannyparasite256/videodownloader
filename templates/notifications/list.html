@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Notifications — {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-xl">
+  <div class="flex items-center justify-between">
+    <h1 class="text-3xl font-bold">Notifications</h1>
+    <form method="post" action="{% url 'notifications:mark_all_read' %}">
+      {% csrf_token %}
+      <button class="btn-ghost text-sm">Mark all read</button>
+    </form>
+  </div>
+  {% include "notifications/partials/list.html" %}
+</div>
+{% endblock %}

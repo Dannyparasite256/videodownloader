@@ -1,0 +1,39 @@
+{% load humanize %}
+<article class="job-row group" id="job-{{ job.id }}">
+  <div class="relative h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-black/5 ring-1 ring-black/5 dark:bg-white/5 dark:ring-white/10">
+    {% if job.thumbnail_url %}
+      <img src="{{ job.thumbnail_url }}" alt="" class="h-full w-full object-cover" loading="lazy" />
+    {% else %}
+      <div class="grid h-full place-items-center text-[0.6rem] text-slate-400">—</div>
+    {% endif %}
+  </div>
+
+  <div class="min-w-0 flex-1">
+    <div class="flex flex-wrap items-center gap-1.5">
+      <a href="{% url 'downloads:detail' job.id %}" class="font-medium tracking-tight text-[0.9rem] hover:text-indigo-500 truncate max-w-[min(100%,28rem)]">
+        {{ job.title|default:job.url|truncatechars:72 }}
+      </a>
+      {% if job.is_favorite %}<span class="text-amber-400 text-xs">★</span>{% endif %}
+    </div>
+    <div class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+      <span class="badge badge-{{ job.status }} !text-[0.6rem] !py-0.5">{{ job.get_status_display }}</span>
+      {% if job.platform_display %}
+        <span class="opacity-80">{{ job.platform_display }}</span>
+      {% endif %}
+      <span class="opacity-40">·</span>
+      <span>{{ job.created_at|naturaltime }}</span>
+    </div>
+    {% if job.status == "downloading" or job.status == "queued" or job.status == "processing" %}
+      <div class="progress-track mt-2 max-w-xs h-1">
+        <div class="progress-bar is-active" style="width: {{ job.progress_percent }}%"></div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="job-row-actions flex shrink-0 items-center gap-1.5">
+    {% if job.status == "completed" %}
+      <a href="{% url 'downloads:file' job.id %}" class="btn-primary !text-xs !py-1.5 !px-2.5">Save</a>
+    {% endif %}
+    <a href="{% url 'downloads:detail' job.id %}" class="btn-ghost !text-xs !py-1.5">Open</a>
+  </div>
+</article>

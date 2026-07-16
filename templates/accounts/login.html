@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Sign in — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-md pt-10 sm:pt-16">
+  <div class="glass-strong rounded-[1.75rem] p-8 sm:p-9 animate-slide-up">
+    <div class="mb-6 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-[0_0_28px_rgba(99,102,241,0.35)]">
+      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+      </svg>
+    </div>
+    <h1 class="text-2xl font-semibold tracking-tight">Welcome back</h1>
+    <p class="mt-1.5 text-sm text-slate-500">Sign in to sync history and unlock higher limits.</p>
+
+    <form method="post" class="mt-7 space-y-4">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2.5 text-sm text-rose-600">{{ form.non_field_errors }}</div>
+      {% endif %}
+      <div>
+        <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400" for="id_username">Username or email</label>
+        {{ form.username }}
+      </div>
+      <div>
+        <label class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400" for="id_password">Password</label>
+        {{ form.password }}
+      </div>
+      <button type="submit" class="btn-primary w-full !py-3 mt-1">Sign in</button>
+    </form>
+
+    <p class="mt-5 text-center text-sm text-slate-500">
+      <a href="{% url 'accounts:password_reset' %}" class="hover:text-indigo-500 transition">Forgot password?</a>
+    </p>
+    <p class="mt-2 text-center text-sm">
+      No account?
+      <a href="{% url 'accounts:register' %}" class="font-medium text-indigo-500 hover:text-indigo-400">Create one</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

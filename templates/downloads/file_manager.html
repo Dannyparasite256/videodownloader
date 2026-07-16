@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Files — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-5xl">
+  <h1 class="text-[1.75rem] font-semibold tracking-tight sm:text-3xl">Files</h1>
+  <p class="mt-1 text-sm text-slate-500">Browse completed downloads</p>
+
+  <div class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    {% for job in jobs %}
+      <article class="glass card card-hover flex flex-col !p-3">
+        <div class="aspect-video overflow-hidden rounded-xl bg-black/5 ring-1 ring-black/5 dark:bg-white/5 dark:ring-white/10">
+          {% if job.thumbnail_url %}
+            <img src="{{ job.thumbnail_url }}" alt="" class="h-full w-full object-cover" loading="lazy" />
+          {% endif %}
+        </div>
+        <h3 class="mt-3 font-semibold line-clamp-2 text-sm tracking-tight">{{ job.title|default:"Untitled" }}</h3>
+        <p class="mt-1 text-xs text-slate-500 tabular">{{ job.output_format|upper }} · {{ job.resolution|default:"—" }}</p>
+        <div class="mt-auto pt-3 flex gap-2">
+          <a href="{% url 'downloads:file' job.id %}" class="btn-primary text-xs !py-1.5 flex-1">Download</a>
+          <a href="{% url 'downloads:detail' job.id %}" class="btn-ghost text-xs">Details</a>
+        </div>
+      </article>
+    {% empty %}
+      <div class="col-span-full empty-state glass rounded-[1.75rem]">
+        <div class="empty-icon glass-soft text-indigo-500 mx-auto">
+          <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+        </div>
+        <p class="text-lg font-semibold tracking-tight">No files yet</p>
+        <p class="mt-1.5 text-sm text-slate-500">Completed downloads will appear here.</p>
+        <a href="{% url 'downloads:home' %}" class="btn-primary mt-6 inline-flex">Download something</a>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

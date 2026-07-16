@@ -1,0 +1,664 @@
+{% extends "base.html" %}
+{% block title %}Download — {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<section
+  class="relative mx-auto max-w-2xl pt-8 sm:pt-16"
+  x-data="downloaderApp()"
+  x-init="init()"
+  @paste.window="onGlobalPaste($event)"
+  @vdl:drop-url.window="onDropUrl($event)"
+  style="view-transition-name: home-hero"
+>
+  {# Hero — product-first, quiet #}
+  <div class="text-center animate-slide-up">
+    <p class="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-slate-400">
+      Multi-platform media
+    </p>
+    <h1 class="mt-3 text-[2rem] font-semibold tracking-tight text-slate-900 dark:text-white sm:text-[2.75rem] sm:leading-[1.12]">
+      Paste a link to begin
+    </h1>
+    <p class="mx-auto mt-3 max-w-sm text-[0.95rem] leading-relaxed text-slate-500 dark:text-slate-400">
+      Choose quality and download. Progress updates live.
+    </p>
+  </div>
+
+  {# Signature command bar #}
+  <div
+    class="hero-shell glass-strong mt-9 animate-slide-up"
+    style="animation-delay: 0.05s"
+    :class="{ 'drop-active': dragOver }"
+    @dragover.prevent="dragOver = true"
+    @dragleave.prevent="dragOver = false"
+    @drop.prevent="onDrop($event)"
+  >
+    <form @submit.prevent="fetchMeta" class="flex flex-col gap-1.5 sm:flex-row sm:items-center">
+      <div class="relative flex flex-1 items-center gap-3 px-3.5 py-1.5">
+        {# Platform brand indicator #}
+        <div
+          class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors duration-300"
+          :style="platformSlug ? `background:${platformColor(platformSlug)}18;color:${platformColor(platformSlug)}` : ''"
+          :class="!platformSlug && 'bg-indigo-500/10 text-indigo-500'"
+        >
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+          </svg>
+        </div>
+        <input
+          id="url-input"
+          type="url"
+          name="url"
+          x-model="url"
+          @input="onUrlInput"
+          @focus="tryClipboard"
+          class="hero-input"
+          placeholder="Paste video, audio, or playlist URL"
+          autocomplete="off"
+          spellcheck="false"
+          required
+          aria-label="Media URL"
+        />
+        <span class="kbd-hint hidden shrink-0 lg:inline" title="Focus shortcut">/</span>
+        <button
+          type="button"
+          x-show="url"
+          x-cloak
+          @click="clearAll()"
+          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-black/5 dark:hover:bg-white/10"
+          aria-label="Clear"
+        >×</button>
+      </div>
+      <div class="flex gap-2 px-2 pb-2 sm:px-1 sm:pb-0 sm:pr-1.5">
+        <button type="button" class="btn-secondary flex-1 sm:flex-none !text-sm" @click="pasteAndGo()" :class="{ 'is-busy': loading }">Paste</button>
+        <button
+          type="submit"
+          class="btn-primary relative flex-1 sm:min-w-[128px] sm:flex-none !py-2.5"
+          :disabled="!url || loading"
+          :class="{ 'is-busy': showBusy }"
+        >
+          <span class="inline-flex items-center gap-2" x-show="!showBusy">Analyze</span>
+          <span class="inline-flex items-center gap-2" x-show="showBusy" x-cloak>
+            <span class="btn-spinner"></span>
+            <span>Analyzing</span>
+          </span>
+        </button>
+      </div>
+    </form>
+    <div
+      class="flex items-center justify-between gap-2 border-t border-black/[0.04] px-4 py-2 dark:border-white/[0.06]"
+      x-show="platformLabel || hostLabel"
+      x-cloak
+    >
+      <span class="platform-pill glass-soft text-slate-600 dark:text-slate-300">
+        <span class="brand-dot" :style="'background:' + platformColor(platformSlug || 'unknown')"></span>
+        <span x-text="platformLabel || hostLabel"></span>
+      </span>
+      <span class="text-[0.7rem] text-slate-400 hidden sm:inline">⌘K for commands</span>
+    </div>
+  </div>
+
+  {# Quiet platform logo row #}
+  <div class="mt-5 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
+    <template x-for="p in platforms" :key="p.name">
+      <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.68rem] font-medium text-slate-400 dark:text-slate-500">
+        <span class="brand-dot opacity-80" :style="'background:' + p.color"></span>
+        <span x-text="p.name"></span>
+      </span>
+    </template>
+  </div>
+
+  {# Error state #}
+  <div
+    x-show="error"
+    x-transition
+    x-cloak
+    class="mt-5 glass rounded-2xl border border-rose-500/20 px-4 py-3.5 flex gap-3"
+  >
+    <span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rose-500/15 text-rose-500 text-xs font-bold">!</span>
+    <div>
+      <p class="text-sm font-medium text-rose-600 dark:text-rose-300">Couldn’t load this link</p>
+      <p class="mt-0.5 text-sm text-slate-500 dark:text-slate-400" x-text="error"></p>
+      <p class="mt-1.5 text-xs text-slate-400">Check the URL is public and try again.</p>
+    </div>
+  </div>
+
+  {# Skeleton matching final layout #}
+  <div x-show="loading" x-cloak class="mt-8 glass-strong rounded-[1.75rem] p-5 sm:p-6">
+    <div class="flex flex-col gap-5 sm:flex-row">
+      <div class="skeleton aspect-video w-full sm:w-56 shrink-0 rounded-2xl"></div>
+      <div class="flex-1 space-y-3 pt-0.5">
+        <div class="skeleton h-5 w-[88%]"></div>
+        <div class="skeleton h-3.5 w-2/5"></div>
+        <div class="skeleton h-3.5 w-1/3"></div>
+        <div class="mt-4 skeleton h-10 w-full rounded-full"></div>
+        <div class="flex gap-2 pt-1">
+          <div class="skeleton h-10 flex-1 rounded-xl"></div>
+          <div class="skeleton h-10 flex-1 rounded-xl"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Metadata card — denser, app-like #}
+  <div
+    x-show="meta && !loading"
+    x-transition:enter="transition ease-out duration-400"
+    x-transition:enter-start="opacity-0 translate-y-3"
+    x-transition:enter-end="opacity-100 translate-y-0"
+    x-cloak
+    class="mt-8 glass-strong rounded-[1.75rem] overflow-hidden"
+  >
+    <div class="flex flex-col sm:flex-row">
+      <div class="relative w-full shrink-0 sm:w-56">
+        <div class="aspect-video sm:aspect-auto sm:h-full min-h-[9rem] bg-black/10">
+          <img
+            :src="meta.thumbnail"
+            :alt="meta.title"
+            class="h-full w-full object-cover"
+            loading="lazy"
+            x-show="meta.thumbnail"
+          />
+        </div>
+        <div class="absolute bottom-2 right-2 glass-soft rounded-md px-1.5 py-0.5 text-[0.7rem] font-mono tabular text-slate-800 dark:text-white" x-text="formatDuration(meta.duration)"></div>
+      </div>
+
+      <div class="min-w-0 flex-1 p-5 sm:p-6">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="platform-pill glass-soft text-slate-600 dark:text-slate-300">
+            <span class="brand-dot" :style="'background:' + platformColor(meta.platform)"></span>
+            <span x-text="meta.platform_display || meta.platform"></span>
+          </span>
+          <span x-show="meta.is_playlist" class="badge badge-queued">Playlist</span>
+        </div>
+        <h2 class="mt-2.5 text-lg font-semibold leading-snug tracking-tight sm:text-xl" x-text="meta.title"></h2>
+        <p class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-slate-500">
+          <span class="font-medium text-slate-600 dark:text-slate-300" x-text="meta.uploader || 'Unknown'"></span>
+          <span class="opacity-25">·</span>
+          <span class="tabular" x-text="formatViews(meta.view_count) + ' views'"></span>
+          <template x-if="meta.like_count">
+            <span class="inline-flex gap-2">
+              <span class="opacity-25">·</span>
+              <span class="tabular" x-text="formatViews(meta.like_count) + ' likes'"></span>
+            </span>
+          </template>
+        </p>
+
+        {# Type segmented #}
+        <div class="mt-5">
+          <p class="section-label">Type</p>
+          <div class="segmented">
+            <template x-for="m in modes" :key="m.value">
+              <button type="button" class="chip" :class="{ active: mode === m.value }" @click="mode = m.value" x-text="m.label"></button>
+            </template>
+          </div>
+        </div>
+
+        {# Compact quality + format selects #}
+        <div class="mt-4 grid gap-3 sm:grid-cols-2" x-show="mode !== 'subtitles' && mode !== 'thumbnail'">
+          <div x-show="mode !== 'audio_only'">
+            <p class="section-label">Quality</p>
+            <select class="form-select" x-model="quality">
+              <template x-for="q in qualities" :key="q.value">
+                <option :value="q.value" x-text="q.label"></option>
+              </template>
+            </select>
+          </div>
+          <div x-show="mode === 'audio_only'">
+            <p class="section-label">Audio quality</p>
+            <select class="form-select" x-model="audioQuality">
+              <template x-for="q in audioQualities" :key="q.value">
+                <option :value="q.value" x-text="q.label"></option>
+              </template>
+            </select>
+          </div>
+          <div x-show="mode !== 'audio_only'">
+            <p class="section-label">Container</p>
+            <select class="form-select" x-model="outputFormat">
+              <template x-for="f in videoFormats" :key="f">
+                <option :value="f" x-text="f.toUpperCase()"></option>
+              </template>
+            </select>
+          </div>
+          <div x-show="mode === 'audio_only'">
+            <p class="section-label">Audio format</p>
+            <select class="form-select" x-model="audioFormat">
+              <template x-for="f in audioFormats" :key="f">
+                <option :value="f" x-text="f.toUpperCase()"></option>
+              </template>
+            </select>
+          </div>
+        </div>
+
+        {# Advanced collapsible #}
+        <div class="mt-4">
+          <button type="button" class="text-xs font-semibold text-indigo-500 hover:text-indigo-400" @click="showAdvanced = !showAdvanced">
+            <span x-text="showAdvanced ? 'Hide advanced' : 'Formats & options'"></span>
+          </button>
+          <div x-show="showAdvanced" x-transition x-cloak class="mt-3 space-y-3">
+            <div class="flex flex-wrap gap-4 text-sm text-slate-600 dark:text-slate-300">
+              <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" x-model="embedThumbnail" class="rounded border-slate-300 text-indigo-500 focus:ring-indigo-500/40" />
+                Embed thumbnail
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" x-model="embedSubs" class="rounded border-slate-300 text-indigo-500 focus:ring-indigo-500/40" />
+                Embed subtitles
+              </label>
+              <label class="inline-flex items-center gap-2" x-show="meta.is_playlist" x-cloak>
+                <span class="text-xs text-slate-400">Range</span>
+                <input type="number" min="1" x-model.number="playlistStart" class="form-input w-16 !py-1 !px-2 text-sm" placeholder="1" />
+                <span class="opacity-40">–</span>
+                <input type="number" min="1" x-model.number="playlistEnd" class="form-input w-16 !py-1 !px-2 text-sm" placeholder="end" />
+              </label>
+            </div>
+            <div x-show="meta.formats && meta.formats.length" class="max-h-44 overflow-auto rounded-xl glass-soft">
+              <table class="w-full text-left text-xs">
+                <thead class="sticky top-0 bg-white/80 backdrop-blur dark:bg-surface-900/90">
+                  <tr class="text-slate-400">
+                    <th class="px-3 py-2 font-medium">ID</th>
+                    <th class="px-3 py-2 font-medium">Res</th>
+                    <th class="px-3 py-2 font-medium">Ext</th>
+                    <th class="px-3 py-2 font-medium">Size</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="f in meta.formats" :key="f.format_id">
+                    <tr
+                      class="cursor-pointer border-t border-black/5 hover:bg-indigo-500/10 dark:border-white/5"
+                      :class="{ 'bg-indigo-500/12': formatId === f.format_id }"
+                      @click="formatId = f.format_id"
+                    >
+                      <td class="px-3 py-1.5 font-mono" x-text="f.format_id"></td>
+                      <td class="px-3 py-1.5" x-text="f.resolution"></td>
+                      <td class="px-3 py-1.5" x-text="f.ext"></td>
+                      <td class="px-3 py-1.5 tabular" x-text="formatBytes(f.filesize)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            class="btn-primary relative w-full sm:w-auto sm:min-w-[160px] !py-3"
+            @click="startDownload"
+            :disabled="starting"
+            :class="{ 'is-busy': showStartBusy }"
+          >
+            <span class="inline-flex items-center gap-2" x-show="!showStartBusy">
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Download
+            </span>
+            <span class="inline-flex items-center gap-2" x-show="showStartBusy" x-cloak>
+              <span class="btn-spinner"></span>
+              Starting
+            </span>
+          </button>
+          <a :href="meta.webpage_url || url" target="_blank" rel="noopener" data-no-boost class="btn-secondary w-full sm:w-auto justify-center">Open source</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Live progress — percentage, speed, ETA always visible #}
+  <div x-show="activeJob" x-transition x-cloak class="mt-5 glass-strong rounded-[1.75rem] p-5 sm:p-6">
+    <div class="flex items-start gap-4">
+      <div class="ring-progress relative shrink-0" :style="'--p:' + Number(activeJob?.progress || 0)">
+        <span
+          class="absolute inset-0 z-[1] grid place-items-center text-[11px] font-bold tabular text-slate-800 dark:text-white"
+          x-text="Math.round(Number(activeJob?.progress || 0)) + '%'"
+        ></span>
+      </div>
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex min-w-0 flex-wrap items-center gap-2">
+            <h3 class="font-semibold tracking-tight truncate max-w-[16rem] sm:max-w-md" x-text="activeJob?.title || 'Downloading…'"></h3>
+            <span class="badge" :class="'badge-' + statusBadge(activeJob?.status)" x-text="activeJob?.status"></span>
+          </div>
+          <span class="text-lg font-semibold tabular text-indigo-500" x-text="Math.round(Number(activeJob?.progress || 0)) + '%'"></span>
+        </div>
+        <p class="mt-1 text-sm text-slate-500 capitalize" x-text="(activeJob?.stage || 'starting').replace(/_/g, ' ')"></p>
+        <div class="progress-track mt-3 h-2.5">
+          <div
+            class="progress-bar"
+            :class="{ 'is-active': !['completed','failed','cancelled'].includes(activeJob?.status) }"
+            :style="'width:' + Math.min(100, Math.max(0, Number(activeJob?.progress || 0))) + '%'"
+          ></div>
+        </div>
+        <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div class="meta-tile !py-2">
+            <dt>Speed</dt>
+            <dd class="font-mono text-sm tabular text-indigo-500" x-text="activeJob?.speed || '—'"></dd>
+          </div>
+          <div class="meta-tile !py-2">
+            <dt>ETA</dt>
+            <dd class="font-mono text-sm tabular" x-text="activeJob?.eta || '—'"></dd>
+          </div>
+          <div class="meta-tile !py-2 col-span-2 sm:col-span-1">
+            <dt>Downloaded</dt>
+            <dd class="font-mono text-sm tabular" x-text="(activeJob?.downloaded || '—') + ' / ' + (activeJob?.total || '—')"></dd>
+          </div>
+        </div>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <a :href="'/history/' + activeJob?.id + '/'" class="btn-secondary text-sm">Details</a>
+          <a x-show="activeJob?.status === 'completed'" x-cloak :href="'/history/' + activeJob?.id + '/file/'" class="btn-primary text-sm !py-2">Save file</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Feature strip — restrained #}
+  <div class="mt-14 grid gap-3 sm:grid-cols-3">
+    <div class="card glass">
+      <div class="icon-tile mb-3">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      </div>
+      <h3 class="text-[0.95rem] font-semibold tracking-tight">Instant metadata</h3>
+      <p class="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">Title, formats, and thumbnails as soon as you paste.</p>
+    </div>
+    <div class="card glass">
+      <div class="icon-tile mb-3">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      </div>
+      <h3 class="text-[0.95rem] font-semibold tracking-tight">Live progress</h3>
+      <p class="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">Speed, ETA, and stage over WebSockets.</p>
+    </div>
+    <div class="card glass">
+      <div class="icon-tile mb-3">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+      </div>
+      <h3 class="text-[0.95rem] font-semibold tracking-tight">Respect & security</h3>
+      <p class="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">No DRM bypass. Secure defaults built in.</p>
+    </div>
+  </div>
+
+  {# Bulk #}
+  <div class="mt-10 glass rounded-[1.75rem] p-5" x-data="{ open: false }">
+    <button type="button" class="flex w-full items-center justify-between text-left" @click="open = !open">
+      <div>
+        <h3 class="font-semibold tracking-tight">Bulk download</h3>
+        <p class="text-sm text-slate-500 mt-0.5">One URL per line</p>
+      </div>
+      <span class="btn-glass !h-9 !w-9">
+        <svg class="h-4 w-4 transition-transform duration-300" :class="{ 'rotate-180': open }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+      </span>
+    </button>
+    <form x-show="open" x-transition x-cloak method="post" action="{% url 'downloads:bulk' %}" class="mt-4 space-y-3">
+      {% csrf_token %}
+      <textarea name="urls" rows="4" class="form-input font-mono text-sm" placeholder="https://…&#10;https://…"></textarea>
+      <input type="hidden" name="quality" value="best" />
+      <button type="submit" class="btn-primary">Queue all</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function downloaderApp() {
+  return {
+    url: '',
+    meta: null,
+    loading: false,
+    showBusy: false,
+    _busyTimer: null,
+    starting: false,
+    showStartBusy: false,
+    _startBusyTimer: null,
+    error: '',
+    dragOver: false,
+    showAdvanced: false,
+    mode: 'video_audio',
+    quality: 'best',
+    audioQuality: '192',
+    outputFormat: 'mp4',
+    audioFormat: 'mp3',
+    formatId: '',
+    embedThumbnail: true,
+    embedSubs: false,
+    playlistStart: null,
+    playlistEnd: null,
+    activeJob: null,
+    platformSlug: '',
+    _unsub: null,
+    platforms: [
+      { name: 'YouTube', color: '#ff0033' },
+      { name: 'TikTok', color: '#25f4ee' },
+      { name: 'Instagram', color: '#e1306c' },
+      { name: 'X', color: '#1d9bf0' },
+      { name: 'Vimeo', color: '#1ab7ea' },
+      { name: 'Reddit', color: '#ff4500' },
+      { name: 'SoundCloud', color: '#ff5500' },
+      { name: 'Twitch', color: '#9146ff' },
+    ],
+    modes: [
+      { value: 'video_audio', label: 'Video' },
+      { value: 'audio_only', label: 'Audio' },
+      { value: 'video_only', label: 'Video only' },
+      { value: 'playlist', label: 'Playlist' },
+      { value: 'subtitles', label: 'Subs' },
+      { value: 'thumbnail', label: 'Thumb' },
+    ],
+    qualities: [
+      {% for v, l in qualities %}{ value: '{{ v }}', label: '{{ l }}' },{% endfor %}
+    ],
+    audioQualities: [
+      {% for v, l in audio_qualities %}{ value: '{{ v }}', label: '{{ l }}' },{% endfor %}
+    ],
+    videoFormats: {{ video_formats_json|safe }},
+    audioFormats: {{ audio_formats_json|safe }},
+
+    init() {},
+    get hostLabel() {
+      if (!this.url) return '';
+      try { return new URL(this.url).hostname.replace(/^www\./, ''); }
+      catch { return ''; }
+    },
+    get platformLabel() {
+      if (this.meta?.platform_display) return this.meta.platform_display;
+      if (this.platformSlug) return this.platformSlug;
+      return this.hostLabel ? 'Detected · ' + this.hostLabel : '';
+    },
+    detectSlugFromUrl() {
+      const h = (this.hostLabel || '').toLowerCase();
+      if (h.includes('youtu')) return 'youtube';
+      if (h.includes('tiktok')) return 'tiktok';
+      if (h.includes('instagram')) return 'instagram';
+      if (h.includes('twitter') || h === 'x.com') return 'twitter';
+      if (h.includes('facebook') || h.includes('fb.')) return 'facebook';
+      if (h.includes('vimeo')) return 'vimeo';
+      if (h.includes('reddit')) return 'reddit';
+      if (h.includes('twitch')) return 'twitch';
+      if (h.includes('soundcloud')) return 'soundcloud';
+      if (h.includes('bilibili')) return 'bilibili';
+      return '';
+    },
+    onUrlInput() {
+      this.platformSlug = this.detectSlugFromUrl();
+      if (!this.url) setMediaBackdrop(null);
+    },
+    clearAll() {
+      this.url = '';
+      this.meta = null;
+      this.error = '';
+      this.platformSlug = '';
+      setMediaBackdrop(null);
+    },
+    tryClipboard() { tryPasteFromClipboard(document.getElementById('url-input')); },
+    async pasteAndGo() {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && /^https?:\/\//i.test(text.trim())) {
+          this.url = text.trim();
+          this.onUrlInput();
+          await this.fetchMeta();
+          return;
+        }
+      } catch (_) {}
+      this.tryClipboard();
+      if (this.url) await this.fetchMeta();
+      else showToast('Clipboard empty or blocked', 'info');
+    },
+    onGlobalPaste(e) {
+      if (['INPUT', 'TEXTAREA'].includes(e.target?.tagName)) return;
+      const text = (e.clipboardData || window.clipboardData)?.getData('text');
+      if (text && /^https?:\/\//i.test(text.trim())) {
+        this.url = text.trim();
+        this.onUrlInput();
+        this.fetchMeta();
+      }
+    },
+    onDrop(e) {
+      this.dragOver = false;
+      const text = e.dataTransfer.getData('text');
+      if (text && /^https?:\/\//i.test(text.trim())) {
+        this.url = text.trim();
+        this.onUrlInput();
+        this.fetchMeta();
+      }
+    },
+    onDropUrl(e) {
+      const url = e.detail?.url;
+      if (!url) return;
+      this.url = url;
+      this.onUrlInput();
+      this.fetchMeta();
+    },
+    setLoading(on) {
+      this.loading = on;
+      clearTimeout(this._busyTimer);
+      if (on) {
+        // Only show spinner if request lasts longer than a blink (~160ms)
+        this._busyTimer = setTimeout(() => { this.showBusy = true; }, 160);
+      } else {
+        this.showBusy = false;
+      }
+    },
+    async fetchMeta() {
+      if (!this.url) return;
+      this.setLoading(true);
+      this.error = '';
+      this.meta = null;
+      this.formatId = '';
+      this.showAdvanced = false;
+      try {
+        const body = new FormData();
+        body.append('url', this.url);
+        body.append('csrfmiddlewaretoken', getCsrfToken());
+        const res = await fetch('{% url "downloads:metadata" %}', {
+          method: 'POST',
+          body,
+          headers: { 'X-CSRFToken': getCsrfToken() },
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || 'Failed to fetch metadata');
+        this.meta = json.data;
+        this.platformSlug = this.meta.platform || this.detectSlugFromUrl();
+        if (this.meta.is_playlist) this.mode = 'playlist';
+        setMediaBackdrop(this.meta.thumbnail || null);
+      } catch (err) {
+        this.error = err.message || String(err);
+        setMediaBackdrop(null);
+      } finally {
+        this.setLoading(false);
+      }
+    },
+    async startDownload() {
+      if (!this.url || this.starting) return;
+      this.starting = true;
+      clearTimeout(this._startBusyTimer);
+      this._startBusyTimer = setTimeout(() => { this.showStartBusy = true; }, 160);
+      this.error = '';
+      try {
+        const body = new FormData();
+        body.append('url', this.url);
+        body.append('mode', this.mode);
+        body.append('quality', this.quality);
+        body.append('audio_quality', this.audioQuality);
+        body.append('output_format', this.outputFormat);
+        body.append('audio_format', this.audioFormat);
+        if (this.formatId) body.append('format_id', this.formatId);
+        if (this.embedThumbnail) body.append('embed_thumbnail', 'on');
+        if (this.embedSubs) body.append('embed_subs', 'on');
+        if (this.playlistStart) body.append('playlist_start', this.playlistStart);
+        if (this.playlistEnd) body.append('playlist_end', this.playlistEnd);
+        if (this.meta) {
+          body.append('title', this.meta.title || '');
+          body.append('thumbnail', this.meta.thumbnail || '');
+          body.append('uploader', this.meta.uploader || '');
+          body.append('duration', this.meta.duration ?? '');
+          body.append('video_id', this.meta.video_id || '');
+          body.append('platform', this.meta.platform || '');
+          body.append('platform_display', this.meta.platform_display || '');
+          body.append('view_count', this.meta.view_count ?? '');
+          body.append('like_count', this.meta.like_count ?? '');
+        }
+        const res = await fetch('{% url "downloads:start" %}', {
+          method: 'POST',
+          body,
+          headers: { 'X-CSRFToken': getCsrfToken(), Accept: 'application/json' },
+        });
+        const json = await res.json();
+        if (!json.ok && !json.id) throw new Error(json.error || 'Could not start download');
+        const id = json.id || json.data?.id;
+        this.activeJob = {
+          id,
+          title: this.meta?.title || 'Download',
+          status: 'queued',
+          progress: 0,
+          stage: 'queued',
+          speed: '—',
+          eta: '—',
+          downloaded: '0 B',
+          total: '—',
+        };
+        if (this._unsub) this._unsub();
+        this._unsub = connectDownloadProgress(id, {
+          onProgress: (d) => {
+            this.activeJob = {
+              ...this.activeJob,
+              ...d,
+              // Keep title if server sends empty
+              title: d.title || this.activeJob.title,
+              progress: Number(d.progress ?? d.percent ?? this.activeJob.progress ?? 0),
+              speed: d.speed || this.activeJob.speed || '—',
+            };
+          },
+          onComplete: (d) => {
+            this.activeJob = {
+              ...this.activeJob,
+              ...d,
+              progress: 100,
+              status: 'completed',
+              speed: '—',
+              eta: '0s',
+            };
+            showToast('Download complete', 'success');
+            if (Notification.permission === 'granted') {
+              new Notification('Download complete', { body: d.title || 'Your file is ready' });
+            }
+          },
+          onError: (d) => showToast(d.error || 'Download failed', 'error'),
+        });
+        showToast('Download started', 'success');
+      } catch (err) {
+        this.error = err.message || String(err);
+        showToast(this.error, 'error');
+      } finally {
+        clearTimeout(this._startBusyTimer);
+        this.starting = false;
+        this.showStartBusy = false;
+      }
+    },
+    statusBadge(s) {
+      if (!s) return 'queued';
+      if (['merging', 'converting', 'processing'].includes(s)) return 'processing';
+      return s;
+    },
+  };
+}
+</script>
+{% endblock %}

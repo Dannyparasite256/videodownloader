@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Bad request — {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-lg py-24 text-center">
+  <p class="text-6xl font-extrabold text-rose-500">400</p>
+  <h1 class="mt-4 text-2xl font-bold">Bad request</h1>
+  <a href="{% url 'downloads:home' %}" class="btn-primary mt-8 inline-flex">Go home</a>
+</div>
+{% endblock %}

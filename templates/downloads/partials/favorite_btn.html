@@ -1,0 +1,10 @@
+<form method="post" action="{% url 'downloads:favorite' job.id %}" hx-post="{% url 'downloads:favorite' job.id %}" hx-swap="outerHTML">
+  {% csrf_token %}
+  <button type="submit" class="btn-ghost text-sm" aria-label="Toggle favorite">
+    {% if job.is_favorite %}
+      <span class="text-amber-400">★ Favorited</span>
+    {% else %}
+      <span>☆ Favorite</span>
+    {% endif %}
+  </button>
+</form>
