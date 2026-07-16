@@ -424,8 +424,9 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.UserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "60/hour",
-        "user": "1000/hour",
+        # Free Render health checks + browsers; 60/hour was killing probes (429)
+        "anon": "600/hour" if RENDER_FREE_TIER else "120/hour",
+        "user": "2000/hour",
         "download": "30/hour",
         "metadata": "120/hour",
     },

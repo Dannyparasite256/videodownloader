@@ -27,9 +27,9 @@ class AuditLogMiddleware:
         duration_ms = (time.perf_counter() - start) * 1000
         response["X-Request-ID"] = request_id
 
-        # Skip noisy static/health paths
+        # Skip noisy static/health paths (Render probes /api/v1/health/ often)
         path = request.path
-        if not path.startswith(("/static/", "/media/", "/health")):
+        if not path.startswith(("/static/", "/media/", "/health", "/api/v1/health")):
             user = getattr(request, "user", None)
             user_id = getattr(user, "pk", None) if user and user.is_authenticated else None
             logger.info(

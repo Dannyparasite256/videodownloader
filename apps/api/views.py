@@ -269,6 +269,7 @@ class TagViewSet(viewsets.ModelViewSet):
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
+@throttle_classes([])  # Render probes this often — never rate-limit health
 def health(request):
-    """Liveness/readiness probe."""
+    """Liveness/readiness probe (used by Render healthCheckPath)."""
     return Response({"ok": True, "status": "healthy", "service": "videodl-pro"})
