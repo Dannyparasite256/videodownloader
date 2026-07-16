@@ -416,8 +416,8 @@ GUEST_MAX_DOWNLOADS_PER_DAY = env.int("GUEST_MAX_DOWNLOADS_PER_DAY", default=5)
 USER_STORAGE_QUOTA_MB = env.int("USER_STORAGE_QUOTA_MB", default=5120)
 
 # YouTube often requires browser cookies on cloud IPs ("Sign in to confirm you're not a bot").
-# Set YTDLP_COOKIES_FILE to a Netscape cookies.txt path, or YTDLP_COOKIES_FROM_BROWSER=chrome (local only).
-# Optional: YTDLP_COOKIES_BASE64 = base64 of cookies.txt (written to a temp file at startup).
+# Priority: YTDLP_COOKIES_FILE → secrets/cookies.txt → YTDLP_COOKIES_BASE64 → browser.
+# See docs/YOUTUBE_COOKIES.md
 YTDLP_COOKIES_FILE = env("YTDLP_COOKIES_FILE", default="")
 YTDLP_COOKIES_FROM_BROWSER = env("YTDLP_COOKIES_FROM_BROWSER", default="")
 YTDLP_COOKIES_BASE64 = env("YTDLP_COOKIES_BASE64", default="")
@@ -430,13 +430,28 @@ YTDLP_USER_AGENT = env(
     ),
 )
 
+# Auto-detect project secrets/cookies.txt if no path set
+if not YTDLP_COOKIES_FILE:
+    for candidate in (
+        BASE_DIR / "secrets" / "cookies.txt",
+        BASE_DIR / "cookies.txt",
+    ):
+        if candidate.is_file() and candidate.stat().st_size > 0:
+            YTDLP_COOKIES_FILE = str(candidate)
+            break
+
 if YTDLP_COOKIES_BASE64 and not YTDLP_COOKIES_FILE:
     import base64
     import tempfile
 
     try:
         raw = base64.b64decode(YTDLP_COOKIES_BASE64)
-        cookie_path = Path(tempfile.gettempdir()) / "ytdlp_cookies.txt"
+        # Accept URL-safe base64 and whitespace
+        if not raw:
+            raw = base64.urlsafe_b64decode(YTDLP_COOKIES_BASE64 + "==")
+        secrets_dir = BASE_DIR / "secrets"
+        secrets_dir.mkdir(exist_ok=True)
+        cookie_path = secrets_dir / "cookies.from_env.txt"
         cookie_path.write_bytes(raw)
         try:
             os.chmod(cookie_path, 0o600)
@@ -444,8 +459,16 @@ if YTDLP_COOKIES_BASE64 and not YTDLP_COOKIES_FILE:
             pass
         YTDLP_COOKIES_FILE = str(cookie_path)
     except Exception:
-        # Leave empty; engine will log if misconfigured
         YTDLP_COOKIES_FILE = ""
+
+# Local default: if still no cookies file, try Chrome (dev machines only)
+if (
+    not YTDLP_COOKIES_FILE
+    and not YTDLP_COOKIES_FROM_BROWSER
+    and DEBUG
+    and not IS_RENDER
+):
+    YTDLP_COOKIES_FROM_BROWSER = "chrome"
 
 # Legal notice – respect ToS and copyright
 DOWNLOAD_DISCLAIMER = (
