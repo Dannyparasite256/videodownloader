@@ -45,6 +45,29 @@ SITE_URL = env("SITE_URL", default="http://localhost:8000")
 SITE_ID = 1
 
 # ---------------------------------------------------------------------------
+# Render.com (and similar PaaS) auto-config
+# ---------------------------------------------------------------------------
+# Render sets RENDER=true and RENDER_EXTERNAL_HOSTNAME for web services.
+IS_RENDER = env.bool("RENDER", default=False) or bool(
+    os.environ.get("RENDER_EXTERNAL_HOSTNAME") or os.environ.get("RENDER_SERVICE_ID")
+)
+RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
+if not RENDER_EXTERNAL_URL and RENDER_EXTERNAL_HOSTNAME:
+    RENDER_EXTERNAL_URL = f"https://{RENDER_EXTERNAL_HOSTNAME}"
+
+if IS_RENDER:
+    # Hosts
+    if RENDER_EXTERNAL_HOSTNAME and RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+    if ".onrender.com" not in ALLOWED_HOSTS and "*.onrender.com" not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(".onrender.com")
+    # CSRF / site URL
+    if RENDER_EXTERNAL_URL:
+        if RENDER_EXTERNAL_URL not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(RENDER_EXTERNAL_URL)
+        SITE_URL = env("SITE_URL", default=RENDER_EXTERNAL_URL)
+# ---------------------------------------------------------------------------
 # Applications
 # ---------------------------------------------------------------------------
 INSTALLED_APPS = [
@@ -128,17 +151,22 @@ TEMPLATES = [
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
-DATABASES = {
-    "default": env.db(
-        "DATABASE_URL",
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-    )
-}
+# Prefer DATABASE_URL (Render/Heroku). Fall back to SQLite for local dev.
+_db_url = env("DATABASE_URL", default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")
+if _db_url.startswith("postgres://"):
+    _db_url = "postgresql://" + _db_url[len("postgres://") :]
+
+DATABASES = {"default": environ.Env.db_url_config(_db_url)}
+
 if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
     DATABASES["default"]["OPTIONS"] = {"timeout": 20}
 else:
     DATABASES["default"]["CONN_MAX_AGE"] = 60
     DATABASES["default"]["ATOMIC_REQUESTS"] = False
+    # Render Postgres requires SSL
+    if IS_RENDER:
+        DATABASES["default"].setdefault("OPTIONS", {})
+        DATABASES["default"]["OPTIONS"].setdefault("sslmode", "require")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -229,12 +257,20 @@ WHITENOISE_MANIFEST_STRICT = False
 WHITENOISE_USE_FINDERS = DEBUG
 
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
-DOWNLOAD_ROOT = Path(env("DOWNLOAD_ROOT", default=str(BASE_DIR / "media" / "downloads")))
+MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
+DOWNLOAD_ROOT = Path(env("DOWNLOAD_ROOT", default=str(MEDIA_ROOT / "downloads")))
+
+# Render persistent disk (mount at /var/data) — survives deploys
+if IS_RENDER and Path("/var/data").is_dir():
+    MEDIA_ROOT = Path(env("MEDIA_ROOT", default="/var/data/media"))
+    DOWNLOAD_ROOT = Path(env("DOWNLOAD_ROOT", default="/var/data/downloads"))
+    MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+    DOWNLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Cache / Redis
 # ---------------------------------------------------------------------------
+# On Render, one Redis URL is used for cache, Celery, and Channels unless overridden.
 REDIS_URL = env("REDIS_URL", default="redis://127.0.0.1:6379/0")
 
 CACHES = {
@@ -288,8 +324,9 @@ if DEBUG:
 # ---------------------------------------------------------------------------
 # Celery
 # ---------------------------------------------------------------------------
-CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://127.0.0.1:6379/1")
-CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://127.0.0.1:6379/2")
+# Default Celery to the same Redis as REDIS_URL (Render provides one Redis)
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=REDIS_URL)
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=REDIS_URL)
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
@@ -388,9 +425,11 @@ DOWNLOAD_DISCLAIMER = (
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------
-SECURE_SSL_REDIRECT = env("SECURE_SSL_REDIRECT")
-SESSION_COOKIE_SECURE = env("SESSION_COOKIE_SECURE")
-CSRF_COOKIE_SECURE = env("CSRF_COOKIE_SECURE")
+# Defaults flip to secure cookies / SSL redirect when hosted on Render
+_secure_default = IS_RENDER and not DEBUG
+SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=_secure_default)
+SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=_secure_default)
+CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=_secure_default)
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
@@ -404,6 +443,9 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+if IS_RENDER:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 AXES_FAILURE_LIMIT = 5

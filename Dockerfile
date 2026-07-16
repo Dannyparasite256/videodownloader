@@ -39,11 +39,18 @@ ENV DJANGO_SETTINGS_MODULE=config.settings \
 RUN python manage.py collectstatic --noinput \
     && chown -R appuser:appuser /app/staticfiles
 
+# Ensure start scripts are executable (Render dockerCommand uses bash)
+RUN chmod +x /app/scripts/*.sh 2>/dev/null || true \
+    && chown -R appuser:appuser /app
+
 USER appuser
 
+# Render injects PORT; default 8000 for local Docker
+ENV PORT=8000
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD curl -f http://127.0.0.1:8000/api/v1/health/ || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD curl -f "http://127.0.0.1:${PORT:-8000}/api/v1/health/" || exit 1
 
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
+# Default: web process (Render overrides with dockerCommand in render.yaml)
+CMD ["bash", "scripts/render_start_web.sh"]

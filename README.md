@@ -70,7 +70,26 @@ Open **http://127.0.0.1:8000**
 
 ---
 
-## Docker Compose
+## Deploy on Render (recommended cloud)
+
+This repo includes a **Render Blueprint** (`render.yaml`) for:
+
+- Docker web (Daphne + FFmpeg)
+- Celery worker
+- PostgreSQL + Redis
+- Persistent disk for downloads
+
+**Guide:** [docs/RENDER_DEPLOY.md](docs/RENDER_DEPLOY.md)
+
+Quick path: Render Dashboard → **New** → **Blueprint** → connect this GitHub repo → **Apply**.
+
+Then open the web service **Shell** and run:
+
+```bash
+python manage.py createsuperuser
+```
+
+## Docker Compose (VPS / local production)
 
 ```bash
 cp .env.example .env

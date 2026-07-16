@@ -1,0 +1,85 @@
+# Render Blueprint — VideoDL Pro
+# https://render.com/docs/blueprint-spec
+#
+# Stack:
+#   - PostgreSQL
+#   - Redis (cache + WebSockets + Celery broker)
+#   - Web (Docker: Django + Daphne + FFmpeg)
+#
+# Downloads run ON the web service (background threads) so files stay on the
+# same disk. A separate Celery worker cannot share Render disks with the web
+# service without object storage (S3). See docs/RENDER_DEPLOY.md.
+#
+# After first deploy → Shell on videodl-web:
+#   python manage.py createsuperuser
+
+databases:
+  - name: videodl-db
+    plan: free
+    databaseName: videodl
+    user: videodl
+
+services:
+  - type: redis
+    name: videodl-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
+
+  - type: web
+    name: videodl-web
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: bash scripts/render_start_web.sh
+    healthCheckPath: /api/v1/health/
+    envVars:
+      - key: RENDER
+        value: "true"
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_ALLOWED_HOSTS
+        value: ".onrender.com"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: DOWNLOAD_ROOT
+        value: /var/data/downloads
+      - key: MEDIA_ROOT
+        value: /var/data/media
+      # Run downloads in-process (threads) so files land on this service's disk
+      - key: CELERY_TASK_ALWAYS_EAGER
+        value: "True"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: videodl-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: videodl-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: videodl-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: videodl-redis
+          type: redis
+          property: connectionString
+      - key: CHANNELS_REDIS_URL
+        fromService:
+          name: videodl-redis
+          type: redis
+          property: connectionString
+      - key: SITE_NAME
+        value: VideoDL Pro
+    disk:
+      name: videodl-media
+      mountPath: /var/data
+      sizeGB: 1
