@@ -1,22 +1,12 @@
-# Render Blueprint — VideoDL Pro
+# Render Blueprint — VideoDL Pro (Free tier, SQLite)
 # https://render.com/docs/blueprint-spec
 #
-# Free-tier stack (no persistent disk — Free web services cannot attach disks):
-#   - PostgreSQL (free)
-#   - Redis / Key Value (free)
-#   - Web Docker (Django + Daphne + FFmpeg)
+# No managed Postgres (avoids "one free database" limit).
+# SQLite file is ephemeral on Free: lost on spin-down / redeploy.
+# Redis kept for cache/WebSockets if free Key Value is still available.
 #
-# Downloads run on the web service (eager Celery). Files are ephemeral on Free
-# (lost on spin-down/redeploy). Paid plan + disk if you need permanent files.
-#
-# Admin login (set once in Dashboard env, or use defaults below for first boot):
-#   DJANGO_SUPERUSER_USERNAME / DJANGO_SUPERUSER_PASSWORD / DJANGO_SUPERUSER_EMAIL
-
-databases:
-  - name: videodl-db
-    plan: free
-    databaseName: videodl
-    user: videodl
+# Login (change after first open):
+#   admin / ChangeMeNow123!
 
 services:
   - type: redis
@@ -45,18 +35,15 @@ services:
         value: ".onrender.com"
       - key: PYTHONUNBUFFERED
         value: "1"
-      # Ephemeral paths (Free tier has no persistent disk)
+      # SQLite (no free Postgres required)
+      - key: DATABASE_URL
+        value: "sqlite:////app/db.sqlite3"
       - key: DOWNLOAD_ROOT
-        value: /opt/render/project/src/media/downloads
+        value: /app/media/downloads
       - key: MEDIA_ROOT
-        value: /opt/render/project/src/media
-      # Run downloads in-process so files stay on this service
+        value: /app/media
       - key: CELERY_TASK_ALWAYS_EAGER
         value: "True"
-      - key: DATABASE_URL
-        fromDatabase:
-          name: videodl-db
-          property: connectionString
       - key: REDIS_URL
         fromService:
           name: videodl-redis
@@ -79,7 +66,6 @@ services:
           property: connectionString
       - key: SITE_NAME
         value: VideoDL Pro
-      # First-boot admin (CHANGE after first login). Free tier has no Shell.
       - key: DJANGO_SUPERUSER_USERNAME
         value: admin
       - key: DJANGO_SUPERUSER_EMAIL
