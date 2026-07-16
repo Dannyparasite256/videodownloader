@@ -32,6 +32,10 @@ services:
         value: "1"
       - key: DATABASE_URL
         value: "sqlite:////app/db.sqlite3"
+      - key: FORCE_SQLITE
+        value: "True"
+      - key: RENDER_USE_SQLITE
+        value: "True"
       - key: DOWNLOAD_ROOT
         value: /app/media/downloads
       - key: MEDIA_ROOT

@@ -161,10 +161,18 @@ TEMPLATES = [
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
-# Prefer DATABASE_URL (Render/Heroku). Fall back to SQLite for local dev.
+# Prefer DATABASE_URL (Render/Heroku). Fall back to SQLite for local dev / free tier.
 _db_url = env("DATABASE_URL", default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")
 if _db_url.startswith("postgres://"):
     _db_url = "postgresql://" + _db_url[len("postgres://") :]
+
+# Free Render often keeps a broken Postgres URL after a failed Blueprint.
+# Allow forcing SQLite without editing every linked env var.
+if env.bool("FORCE_SQLITE", default=False) or (
+    IS_RENDER and env.bool("RENDER_USE_SQLITE", default=False)
+):
+    _db_path = (BASE_DIR / "db.sqlite3").as_posix()
+    _db_url = f"sqlite:///{_db_path}"
 
 DATABASES = {"default": environ.Env.db_url_config(_db_url)}
 

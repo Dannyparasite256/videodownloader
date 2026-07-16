@@ -1,30 +1,60 @@
 #!/usr/bin/env bash
-# Render.com web process entrypoint (free-tier friendly)
-set -euo pipefail
+# Render.com web process entrypoint (free-tier friendly, fail-soft)
+set -uo pipefail
 
 export PYTHONUNBUFFERED=1
+export DJANGO_SETTINGS_MODULE=config.settings
 
-echo "[render] mkdir media/secrets…"
+echo "[render] ===== boot $(date -u +%Y-%m-%dT%H:%M:%SZ) ====="
+echo "[render] PORT=${PORT:-unset}"
+echo "[render] DATABASE_URL set? $([ -n "${DATABASE_URL:-}" ] && echo yes || echo no)"
+echo "[render] RENDER=${RENDER:-} HOSTNAME=${RENDER_EXTERNAL_HOSTNAME:-}"
+
+# Free tier: if DATABASE_URL is missing or still points at a dead Postgres, use SQLite
+if [[ -z "${DATABASE_URL:-}" ]] || [[ "${DATABASE_URL}" == postgres* ]] || [[ "${DATABASE_URL}" == *"dpg-"* ]]; then
+  echo "[render] forcing SQLite (free-tier safe)"
+  export DATABASE_URL="sqlite:////app/db.sqlite3"
+fi
+
+# Never block boot on Redis for free tier
+export CELERY_TASK_ALWAYS_EAGER="${CELERY_TASK_ALWAYS_EAGER:-True}"
+export REDIS_URL="${REDIS_URL:-redis://127.0.0.1:6379/0}"
+
+echo "[render] mkdir…"
 mkdir -p \
   "${DOWNLOAD_ROOT:-/app/media/downloads}" \
   "${MEDIA_ROOT:-/app/media}" \
   /app/media/thumbnails \
   /app/media/avatars \
   /app/secrets \
-  /app/logs || true
+  /app/logs \
+  /app/staticfiles || true
 
 echo "[render] migrate…"
-python manage.py migrate --noinput
+if ! python manage.py migrate --noinput; then
+  echo "[render] migrate failed — retrying with SQLite"
+  export DATABASE_URL="sqlite:////app/db.sqlite3"
+  python manage.py migrate --noinput
+fi
 
 echo "[render] collectstatic…"
-python manage.py collectstatic --noinput
+python manage.py collectstatic --noinput || echo "[render] collectstatic failed (non-fatal)"
 
-# Free web services have no Shell — create admin from env if set (idempotent)
 if [[ -n "${DJANGO_SUPERUSER_USERNAME:-}" && -n "${DJANGO_SUPERUSER_PASSWORD:-}" ]]; then
-  echo "[render] ensuring superuser exists…"
-  python manage.py shell -c "import os; from django.contrib.auth import get_user_model; U=get_user_model(); u=os.environ.get('DJANGO_SUPERUSER_USERNAME','admin'); p=os.environ.get('DJANGO_SUPERUSER_PASSWORD',''); e=os.environ.get('DJANGO_SUPERUSER_EMAIL','admin@example.com');
-(print('[render] superuser created', u) if p and not U.objects.filter(username=u).exists() and U.objects.create_superuser(username=u, email=e, password=p) is None else print('[render] superuser ok', u))" \
-    || echo "[render] superuser step skipped (non-fatal)"
+  echo "[render] ensuring superuser…"
+  python manage.py shell -c "
+import os
+from django.contrib.auth import get_user_model
+User = get_user_model()
+u = os.environ.get('DJANGO_SUPERUSER_USERNAME', 'admin')
+p = os.environ.get('DJANGO_SUPERUSER_PASSWORD', '')
+e = os.environ.get('DJANGO_SUPERUSER_EMAIL', 'admin@example.com')
+if p and not User.objects.filter(username=u).exists():
+    User.objects.create_superuser(username=u, email=e, password=p)
+    print('[render] superuser created', u)
+else:
+    print('[render] superuser ok', u)
+" || echo "[render] superuser step skipped"
 fi
 
 PORT="${PORT:-8000}"
