@@ -141,21 +141,39 @@ class DownloadEngine:
         import yt_dlp
 
         platform = detect_platform(url)
-        ydl_opts = self._base_opts()
-        ydl_opts.update(
+        base = self._base_opts()
+        attempts: list[dict[str, Any]] = [
             {
+                **base,
                 "quiet": True,
                 "no_warnings": True,
                 "skip_download": True,
                 "extract_flat": "in_playlist" if process_playlist else False,
                 "noplaylist": not process_playlist,
             }
-        )
+        ]
+        # Fallback: if we have cookies, also try pure web client only
+        if base.get("cookiefile"):
+            web_only = dict(attempts[0])
+            web_only["extractor_args"] = {"youtube": {"player_client": ["web", "mweb"]}}
+            attempts.append(web_only)
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info = None
+        last_exc: BaseException | None = None
+        for ydl_opts in attempts:
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                if info is not None:
+                    break
+            except Exception as exc:
+                last_exc = exc
+                logger.warning("extract_metadata attempt failed: %s", exc)
+                continue
 
         if info is None:
+            if last_exc:
+                raise last_exc
             raise ValueError("Could not extract metadata from URL")
 
         # Playlist root
@@ -633,6 +651,20 @@ class DownloadEngine:
             return ""
 
     def _base_opts(self) -> dict[str, Any]:
+        # Resolve cookies FIRST — client choice depends on whether we have them.
+        resolved = self._resolve_cookiefile()
+        free = getattr(settings, "RENDER_FREE_TIER", False)
+
+        # With cookies: prefer "web" so the logged-in session is actually used.
+        # Without cookies: mobile/TV clients (often better for anonymous, still often
+        # blocked on datacenter IPs for YouTube).
+        if resolved:
+            player_clients = ["web", "web_safari", "mweb", "android", "ios"]
+        elif free:
+            player_clients = ["android", "ios", "mweb", "tv_embedded"]
+        else:
+            player_clients = ["android", "ios", "tv_embedded", "mweb", "web"]
+
         opts: dict[str, Any] = {
             "socket_timeout": getattr(settings, "YTDLP_SOCKET_TIMEOUT", 30),
             "retries": getattr(settings, "YTDLP_RETRIES", 3),
@@ -646,23 +678,15 @@ class DownloadEngine:
             "allow_unplayable_formats": False,
             # Prefer ffmpeg for merge
             "merge_output_format": "mp4",
-            # Prefer mobile/TV clients — less likely to hit the "not a bot" wall
-            # than "web". Cookies still required on cloud IPs (Render free).
             "extractor_args": {
                 "youtube": {
-                    "player_client": (
-                        ["android", "ios", "mweb"]
-                        if getattr(settings, "RENDER_FREE_TIER", False)
-                        else ["android", "ios", "tv_embedded", "mweb", "web"]
-                    ),
+                    "player_client": player_clients,
                 }
             },
             # Required for current YouTube JS challenges (formats missing without this)
             "remote_components": {"ejs:github"},
             # Free Render OOM protection: fewer parallel fragment downloads
-            "concurrent_fragment_downloads": (
-                1 if getattr(settings, "RENDER_FREE_TIER", False) else 4
-            ),
+            "concurrent_fragment_downloads": 1 if free else 4,
             "http_headers": {
                 "User-Agent": getattr(
                     settings,
@@ -677,11 +701,16 @@ class DownloadEngine:
             },
         }
 
-        # Cookies: Netscape cookies.txt (required for YouTube on cloud / Render)
-        resolved = self._resolve_cookiefile()
         if resolved:
             opts["cookiefile"] = str(resolved)
-            logger.info("yt-dlp using cookies file %s (%s bytes)", resolved, resolved.stat().st_size)
+            logger.info(
+                "yt-dlp using cookies file %s (%s bytes) clients=%s",
+                resolved,
+                resolved.stat().st_size,
+                player_clients,
+            )
+        else:
+            logger.warning("yt-dlp: no YouTube cookies file — cloud YouTube likely fails")
 
         # Local/dev only: pull cookies from an installed browser profile
         browser = getattr(settings, "YTDLP_COOKIES_FROM_BROWSER", "") or ""

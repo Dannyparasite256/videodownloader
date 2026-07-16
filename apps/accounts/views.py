@@ -145,6 +145,14 @@ def upload_youtube_cookies(request: HttpRequest) -> HttpResponse:
     except Exception:
         pass
 
+    # Drop stale metadata failures cached before cookies were present
+    try:
+        from django.core.cache import cache
+
+        cache.clear()
+    except Exception:
+        pass
+
     messages.success(
         request,
         "YouTube cookies saved. Try Analyze again. On free Render, also set env "
