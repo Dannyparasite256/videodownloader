@@ -27,37 +27,55 @@ mkdir -p \
 
 # Durable YouTube cookies: set YTDLP_COOKIES_BASE64 in Render Dashboard → Environment
 # (survives free sleep; file uploads alone are wiped when the free instance restarts)
-if [[ -n "${YTDLP_COOKIES_BASE64:-}" ]]; then
-  echo "[render] writing cookies from YTDLP_COOKIES_BASE64…"
-  python - <<'PY' || echo "[render] cookie write failed (non-fatal)"
-import base64, os
-from pathlib import Path
-raw = os.environ.get("YTDLP_COOKIES_BASE64", "").strip()
-if not raw:
-    raise SystemExit(0)
-try:
-    data = base64.b64decode(raw)
-except Exception:
-    data = base64.urlsafe_b64decode(raw + "==")
-path = Path("/app/secrets/cookies.txt")
-path.parent.mkdir(parents=True, exist_ok=True)
-path.write_bytes(data)
-try:
-    path.chmod(0o600)
-except OSError:
-    pass
-print(f"[render] cookies ready ({len(data)} bytes)")
-PY
-else
-  echo "[render] no YTDLP_COOKIES_BASE64 — YouTube will fail on cloud until set"
-fi
-
 echo "[render] migrate…"
 python manage.py migrate --noinput || {
   echo "[render] migrate retry…"
   export DATABASE_URL="sqlite:////app/db.sqlite3"
   python manage.py migrate --noinput
 }
+
+# Cookies: env BASE64 (best) → else restore from DB if a previous upload exists
+echo "[render] restore YouTube cookies…"
+python - <<'PY' || echo "[render] cookie restore skipped"
+import base64, os
+from pathlib import Path
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+import django
+django.setup()
+from pathlib import Path as P
+raw_b64 = (os.environ.get("YTDLP_COOKIES_BASE64") or "").strip()
+if not raw_b64:
+    try:
+        from apps.accounts.models import SiteSecret
+        raw_b64 = (SiteSecret.get_value("youtube_cookies_b64") or "").strip()
+        if raw_b64:
+            print("[render] cookies from database")
+    except Exception as e:
+        print("[render] db cookies skip", e)
+else:
+    print("[render] cookies from YTDLP_COOKIES_BASE64 env")
+if not raw_b64:
+    print("[render] no cookies yet — set YTDLP_COOKIES_BASE64 or upload in Settings")
+    raise SystemExit(0)
+try:
+    data = base64.b64decode(raw_b64)
+except Exception:
+    data = base64.urlsafe_b64decode(raw_b64 + "==")
+path = P("/app/secrets/cookies.txt")
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_bytes(data)
+try:
+    path.chmod(0o600)
+except OSError:
+    pass
+# Keep DB copy in sync when loaded from env
+try:
+    from apps.accounts.models import SiteSecret
+    SiteSecret.set_value("youtube_cookies_b64", base64.b64encode(data).decode("ascii"))
+except Exception:
+    pass
+print(f"[render] cookies ready ({len(data)} bytes)")
+PY
 
 # Static files are collected at Docker build — only refresh if missing (faster free cold start)
 if [[ ! -f /app/staticfiles/staticfiles.json ]] && [[ ! -f /app/staticfiles/manifest.json ]]; then

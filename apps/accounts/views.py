@@ -125,17 +125,30 @@ def upload_youtube_cookies(request: HttpRequest) -> HttpResponse:
             return redirect("accounts:settings")
 
     dest_dir = Path(dj_settings.BASE_DIR) / "secrets"
-    dest_dir.mkdir(exist_ok=True)
-    dest = dest_dir / "cookies.txt"
-    dest.write_bytes(raw)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    # Always write the well-known paths the engine checks
+    for name in ("cookies.txt", "cookies.from_env.txt"):
+        dest = dest_dir / name
+        dest.write_bytes(raw)
+        try:
+            dest.chmod(0o600)
+        except OSError:
+            pass
+
+    # Persist in DB so boot can restore while the SQLite file still exists
     try:
-        dest.chmod(0o600)
-    except OSError:
+        import base64
+
+        from .models import SiteSecret
+
+        SiteSecret.set_value("youtube_cookies_b64", base64.b64encode(raw).decode("ascii"))
+    except Exception:
         pass
 
     messages.success(
         request,
-        "YouTube cookies saved. Try Analyze on a YouTube link again (no restart needed).",
+        "YouTube cookies saved. Try Analyze again. On free Render, also set env "
+        "YTDLP_COOKIES_BASE64 so cookies survive sleep (see SET-RENDER-YOUTUBE-COOKIES.bat).",
     )
     return redirect("accounts:settings")
 

@@ -160,3 +160,32 @@ class ActivityLog(models.Model):
 
     def __str__(self) -> str:
         return f"{self.action} @ {self.created_at}"
+
+
+class SiteSecret(models.Model):
+    """
+    Singleton-ish store for server secrets that must survive process restarts
+    while the database file still exists (e.g. YouTube cookies.txt content).
+    Free Render wipes SQLite on sleep — use YTDLP_COOKIES_BASE64 for that.
+    """
+
+    key = models.CharField(max_length=64, unique=True, db_index=True)
+    value = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Site secret"
+        verbose_name_plural = "Site secrets"
+
+    def __str__(self) -> str:
+        return self.key
+
+    @classmethod
+    def set_value(cls, key: str, value: str) -> "SiteSecret":
+        obj, _ = cls.objects.update_or_create(key=key, defaults={"value": value})
+        return obj
+
+    @classmethod
+    def get_value(cls, key: str, default: str = "") -> str:
+        obj = cls.objects.filter(key=key).first()
+        return obj.value if obj else default

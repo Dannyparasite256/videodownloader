@@ -1,0 +1,35 @@
+VideoDL Pro — RENDER-COMPATIBLE SETUP
+=====================================
+
+SITE
+  https://videodl-web.onrender.com
+
+LOGIN
+  Username: admin
+  Password: ChangeMeNow123!
+
+WHAT “RENDER COMPATIBLE” MEANS
+  - SQLite (no free Postgres fight)
+  - No Redis required
+  - No paid disk required
+  - 1 download at a time (won’t crash free RAM as easily)
+  - Faster free cold starts
+  - YouTube cookies from env survive free sleep
+
+ONE-TIME: DURABLE YOUTUBE COOKIES (recommended)
+  1. On this PC run:
+       powershell -File "C:\Users\TECNO\Desktop\django downloader\scripts\set_render_cookies.ps1"
+  2. It copies base64 to clipboard (and secrets\cookies.b64.txt)
+  3. Render Dashboard → videodl-web → Environment → Add:
+       Key:   YTDLP_COOKIES_BASE64
+       Value: paste
+  4. Manual Deploy → Deploy latest commit
+  5. Wait until Live
+
+AFTER THAT
+  Open the site → login → paste links.
+  TikTok / Instagram / X / Vimeo: often work without cookies.
+  YouTube: needs the env cookies above on free Render.
+
+CODE ON GITHUB
+  main @ 71bd34d (Render free tier optimizations)

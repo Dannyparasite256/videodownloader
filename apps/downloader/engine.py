@@ -716,8 +716,15 @@ class DownloadEngine:
         if resolved:
             return resolved
 
-        # Re-hydrate from env on every request (survives free-tier restarts if env is set)
+        # Re-hydrate from env (survives free Render sleep) or DB (survives restarts while disk lives)
         b64 = (getattr(settings, "YTDLP_COOKIES_BASE64", "") or os.environ.get("YTDLP_COOKIES_BASE64", "")).strip()
+        if not b64:
+            try:
+                from apps.accounts.models import SiteSecret
+
+                b64 = (SiteSecret.get_value("youtube_cookies_b64") or "").strip()
+            except Exception:
+                b64 = ""
         if not b64:
             return None
         try:
@@ -726,7 +733,7 @@ class DownloadEngine:
             try:
                 raw = base64.urlsafe_b64decode(b64 + "==")
             except Exception:
-                logger.warning("YTDLP_COOKIES_BASE64 is not valid base64")
+                logger.warning("Cookie base64 is not valid")
                 return None
         if len(raw) < 32:
             return None
@@ -739,7 +746,7 @@ class DownloadEngine:
                 dest.chmod(0o600)
             except OSError:
                 pass
-            logger.info("Wrote cookies from YTDLP_COOKIES_BASE64 (%s bytes)", len(raw))
+            logger.info("Wrote cookies from env/DB (%s bytes)", len(raw))
             return dest
         except OSError as exc:
             logger.warning("Could not write cookies file: %s", exc)
