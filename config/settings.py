@@ -543,8 +543,9 @@ if ALLOW_MULTI_DEVICE or env.bool("BEHIND_PROXY", default=False):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     USE_X_FORWARDED_HOST = True
 
-AXES_FAILURE_LIMIT = 5
-AXES_COOLOFF_TIME = timedelta(minutes=30)
+# Free Render: users often mistype the default password; avoid long lockouts
+AXES_FAILURE_LIMIT = env.int("AXES_FAILURE_LIMIT", default=10 if IS_RENDER else 5)
+AXES_COOLOFF_TIME = timedelta(minutes=env.int("AXES_COOLOFF_MINUTES", default=15 if IS_RENDER else 30))
 AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
 AXES_RESET_ON_SUCCESS = True
 

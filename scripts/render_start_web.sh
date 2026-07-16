@@ -41,7 +41,7 @@ echo "[render] collectstatic…"
 python manage.py collectstatic --noinput || echo "[render] collectstatic failed (non-fatal)"
 
 if [[ -n "${DJANGO_SUPERUSER_USERNAME:-}" && -n "${DJANGO_SUPERUSER_PASSWORD:-}" ]]; then
-  echo "[render] ensuring superuser…"
+  echo "[render] ensuring superuser (password synced from env)…"
   python manage.py shell -c "
 import os
 from django.contrib.auth import get_user_model
@@ -49,11 +49,30 @@ User = get_user_model()
 u = os.environ.get('DJANGO_SUPERUSER_USERNAME', 'admin')
 p = os.environ.get('DJANGO_SUPERUSER_PASSWORD', '')
 e = os.environ.get('DJANGO_SUPERUSER_EMAIL', 'admin@example.com')
-if p and not User.objects.filter(username=u).exists():
-    User.objects.create_superuser(username=u, email=e, password=p)
-    print('[render] superuser created', u)
+if not p:
+    print('[render] no superuser password env')
 else:
-    print('[render] superuser ok', u)
+    user = User.objects.filter(username=u).first()
+    if user is None:
+        User.objects.create_superuser(username=u, email=e or 'admin@example.com', password=p)
+        print('[render] superuser created', u)
+    else:
+        user.set_password(p)
+        user.is_staff = True
+        user.is_superuser = True
+        user.is_active = True
+        if e and not user.email:
+            user.email = e
+        user.save()
+        print('[render] superuser password reset', u)
+    # Clear django-axes lockouts so failed tries do not block admin after redeploy
+    try:
+        from axes.models import AccessAttempt, AccessFailureLog
+        AccessAttempt.objects.all().delete()
+        AccessFailureLog.objects.all().delete()
+        print('[render] cleared login lockouts')
+    except Exception as exc:
+        print('[render] axes clear skipped', exc)
 " || echo "[render] superuser step skipped"
 fi
 
