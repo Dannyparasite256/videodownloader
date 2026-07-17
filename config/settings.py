@@ -45,10 +45,6 @@ CSRF_TRUSTED_ORIGINS = env.list(
 # ---------------------------------------------------------------------------
 # When True (default for home hosting): accept any Host header so LAN IPs and
 # Cloudflare / trycloudflare hostnames work without editing .env every time.
-ALLOW_MULTI_DEVICE = env.bool("ALLOW_MULTI_DEVICE", default=True)
-if ALLOW_MULTI_DEVICE:
-    ALLOWED_HOSTS = ["*"]
-
 SITE_NAME = env("SITE_NAME", default="VideoDL Pro")
 SITE_URL = env("SITE_URL", default="http://localhost:8000")
 SITE_ID = 1
@@ -70,6 +66,10 @@ RENDER_FREE_TIER = env.bool(
     "RENDER_FREE_TIER",
     default=IS_RENDER and env.bool("FORCE_SQLITE", default=False),
 )
+
+ALLOW_MULTI_DEVICE = env.bool("ALLOW_MULTI_DEVICE", default=not IS_RENDER)
+if ALLOW_MULTI_DEVICE:
+    ALLOWED_HOSTS = ["*"]
 
 if IS_RENDER:
     # Hosts

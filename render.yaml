@@ -7,7 +7,8 @@
 #   - No Redis, no persistent disk
 #
 # After deploy, set YTDLP_COOKIES_BASE64 in Dashboard for YouTube
-# (see scripts/set_render_cookies.ps1). Login: admin / ChangeMeNow123!
+# (see scripts/set_render_cookies.ps1). Create the first admin user from the
+# Render Shell; never store a default administrator password in this file.
 
 services:
   - type: web
@@ -26,6 +27,12 @@ services:
         value: "True"
       - key: DJANGO_DEBUG
         value: "False"
+      - key: SECURE_SSL_REDIRECT
+        value: "True"
+      - key: SESSION_COOKIE_SECURE
+        value: "True"
+      - key: CSRF_COOKIE_SECURE
+        value: "True"
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: DJANGO_ALLOWED_HOSTS
@@ -58,12 +65,6 @@ services:
         value: "15"
       - key: SITE_NAME
         value: VideoDL Pro
-      - key: DJANGO_SUPERUSER_USERNAME
-        value: admin
-      - key: DJANGO_SUPERUSER_EMAIL
-        value: admin@example.com
-      - key: DJANGO_SUPERUSER_PASSWORD
-        value: ChangeMeNow123!
       # Paste base64 cookies in Dashboard after first deploy (do not commit secrets)
       # - key: YTDLP_COOKIES_BASE64
       #   value: "..."
