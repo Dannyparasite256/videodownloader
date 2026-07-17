@@ -65,10 +65,9 @@ services:
         value: "15"
       - key: SITE_NAME
         value: VideoDL Pro
-      # Cookie-free YouTube; WARP SOCKS routes around datacenter IP blocks
       - key: YTDLP_USE_COOKIES
         value: "False"
       - key: ENABLE_WARP_PROXY
-        value: "True"
+        value: "False"
       - key: YTDLP_FORCE_IPV4
         value: "True"

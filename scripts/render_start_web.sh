@@ -27,11 +27,9 @@ mkdir -p \
   /app/staticfiles \
   /app/warp || true
 
-# WARP is started lazily by Django on first YouTube request (saves free-tier RAM
-# during boot so health checks pass). Pre-set the proxy URL yt-dlp will use.
-if [[ "${ENABLE_WARP_PROXY:-True}" =~ ^(True|true|1|yes|YES)$ ]]; then
-  export YTDLP_PROXY="${YTDLP_PROXY:-socks5://127.0.0.1:1080}"
-  echo "[render] WARP lazy mode — proxy ${YTDLP_PROXY} (starts on first YouTube use)"
+# Optional SOCKS/HTTP proxy for YouTube (set YTDLP_PROXY in Render env if you have one)
+if [[ -n "${YTDLP_PROXY:-}" ]]; then
+  echo "[render] YTDLP_PROXY is set (external proxy)"
 fi
 
 # Durable YouTube cookies: set YTDLP_COOKIES_BASE64 in Render Dashboard → Environment
