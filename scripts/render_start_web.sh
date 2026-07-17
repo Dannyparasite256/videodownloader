@@ -14,6 +14,7 @@ echo "[render] PORT=${PORT:-unset} HOST=${RENDER_EXTERNAL_HOSTNAME:-}"
 
 # Always use SQLite on free tier (ignore broken Postgres URLs left on the service)
 export DATABASE_URL="sqlite:////app/db.sqlite3"
+export YTDLP_USE_COOKIES="${YTDLP_USE_COOKIES:-False}"
 
 echo "[render] mkdir…"
 mkdir -p \
@@ -23,7 +24,20 @@ mkdir -p \
   /app/media/avatars \
   /app/secrets \
   /app/logs \
-  /app/staticfiles || true
+  /app/staticfiles \
+  /app/warp || true
+
+# Cloudflare WARP SOCKS proxy — YouTube blocks raw Render/datacenter IPs.
+# Traffic exits via WARP so Analyze/Download work without the user's PC.
+if [[ "${ENABLE_WARP_PROXY:-True}" == "True" || "${ENABLE_WARP_PROXY:-true}" == "true" || "${ENABLE_WARP_PROXY:-1}" == "1" ]]; then
+  echo "[render] starting WARP SOCKS proxy…"
+  bash /app/scripts/start_warp_proxy.sh || echo "[render] WARP proxy failed — YouTube may still block this IP"
+  if [[ -f /app/warp/env.sh ]]; then
+    # shellcheck disable=SC1091
+    source /app/warp/env.sh
+    echo "[render] YTDLP_PROXY=${YTDLP_PROXY:-unset}"
+  fi
+fi
 
 # Durable YouTube cookies: set YTDLP_COOKIES_BASE64 in Render Dashboard → Environment
 # (survives free sleep; file uploads alone are wiped when the free instance restarts)

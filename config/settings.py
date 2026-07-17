@@ -484,6 +484,9 @@ YTDLP_USE_COOKIES = env.bool("YTDLP_USE_COOKIES", default=False)
 YTDLP_COOKIES_FILE = env("YTDLP_COOKIES_FILE", default="")
 YTDLP_COOKIES_FROM_BROWSER = env("YTDLP_COOKIES_FROM_BROWSER", default="")
 YTDLP_COOKIES_BASE64 = env("YTDLP_COOKIES_BASE64", default="")
+# Route yt-dlp through SOCKS/HTTP proxy (Cloudflare WARP on Render: socks5://127.0.0.1:1080)
+YTDLP_PROXY = env("YTDLP_PROXY", default="")
+YTDLP_FORCE_IPV4 = env.bool("YTDLP_FORCE_IPV4", default=True)
 YTDLP_USER_AGENT = env(
     "YTDLP_USER_AGENT",
     default=(

@@ -65,6 +65,10 @@ services:
         value: "15"
       - key: SITE_NAME
         value: VideoDL Pro
-      # Cookie-free YouTube via mobile clients (no browser cookies needed)
+      # Cookie-free YouTube; WARP SOCKS routes around datacenter IP blocks
       - key: YTDLP_USE_COOKIES
         value: "False"
+      - key: ENABLE_WARP_PROXY
+        value: "True"
+      - key: YTDLP_FORCE_IPV4
+        value: "True"

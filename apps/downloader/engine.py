@@ -149,17 +149,22 @@ class DownloadEngine:
             "extract_flat": "in_playlist" if process_playlist else False,
             "noplaylist": not process_playlist,
         }
-        # Ordered attempts: mobile/embedded clients work without cookies (no PO token)
+        # Ordered attempts for cloud + residential
         client_sets = [
-            ["android_vr", "android_music", "android", "web_embedded"],
-            ["mediaconnect", "android", "ios", "mweb"],
-            ["android"],
-            ["web_embedded", "mweb"],
+            ["tv", "web_embedded", "android_vr"],
+            ["android_vr", "android_music", "web_embedded"],
+            ["mweb", "android"],
+            ["web_embedded"],
         ]
         attempts: list[dict[str, Any]] = []
         for clients in client_sets:
             opts = {**base, **common}
-            opts["extractor_args"] = {"youtube": {"player_client": clients}}
+            opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": clients,
+                    "player_skip": ["webpage", "configs"],
+                }
+            }
             attempts.append(opts)
 
         # Optional cookie path only if explicitly enabled
@@ -409,14 +414,18 @@ class DownloadEngine:
         info = None
         # Retry with alternate client sets if the first fails
         client_sets = [
-            ["android_vr", "android_music", "android", "web_embedded"],
-            ["mediaconnect", "android", "mweb"],
-            ["android"],
+            ["tv", "web_embedded", "android_vr"],
+            ["android_vr", "android_music", "mweb"],
+            ["web_embedded", "android"],
         ]
         for clients in client_sets:
-            ydl_opts["extractor_args"] = {"youtube": {"player_client": clients}}
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl_opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": clients,
+                    "player_skip": ["webpage", "configs"],
+                }
+            }
+            try:                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                 if info is not None:
                     break
@@ -706,9 +715,8 @@ class DownloadEngine:
         if use_cookies is None:
             use_cookies = bool(getattr(settings, "YTDLP_USE_COOKIES", False))
 
-        # Cookie-free path: progressive formats via mobile clients (works without PO tokens
-        # more often than web + cookies on datacenter IPs).
-        player_clients = ["android_vr", "android_music", "android", "web_embedded", "mweb"]
+        # Cloud-friendly clients (SABR + bot workarounds). Prefer TV/embedded/android_vr.
+        player_clients = ["tv", "web_embedded", "android_vr", "android_music", "mweb"]
         resolved = None
         if use_cookies:
             resolved = self._resolve_cookiefile()
@@ -729,6 +737,8 @@ class DownloadEngine:
             "extractor_args": {
                 "youtube": {
                     "player_client": player_clients,
+                    # Fewer webpage hits → less rate limiting on cloud hosts
+                    "player_skip": ["webpage", "configs"],
                 }
             },
             "js_runtimes": {"deno": {}, "node": {}},
@@ -739,14 +749,24 @@ class DownloadEngine:
                     settings,
                     "YTDLP_USER_AGENT",
                     (
-                        "Mozilla/5.0 (Linux; Android 13) "
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                         "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/131.0.0.0 Mobile Safari/537.36"
+                        "Chrome/131.0.0.0 Safari/537.36"
                     ),
                 ),
                 "Accept-Language": "en-US,en;q=0.9",
             },
         }
+
+        # Force IPv4 (IPv6 on some PaaS breaks YouTube)
+        if getattr(settings, "YTDLP_FORCE_IPV4", True):
+            opts["source_address"] = "0.0.0.0"
+
+        # SOCKS/HTTP proxy (Cloudflare WARP on Render: socks5://127.0.0.1:1080)
+        proxy = (getattr(settings, "YTDLP_PROXY", "") or os.environ.get("YTDLP_PROXY", "")).strip()
+        if proxy:
+            opts["proxy"] = proxy
+            logger.info("yt-dlp using proxy %s clients=%s", proxy.split("@")[-1], player_clients)
 
         if resolved:
             opts["cookiefile"] = str(resolved)
@@ -757,7 +777,7 @@ class DownloadEngine:
                 player_clients,
             )
         else:
-            logger.info("yt-dlp cookie-free mode clients=%s", player_clients)
+            logger.info("yt-dlp cookie-free mode clients=%s proxy=%s", player_clients, bool(proxy))
 
         browser = getattr(settings, "YTDLP_COOKIES_FROM_BROWSER", "") or ""
         if use_cookies and browser and "cookiefile" not in opts:

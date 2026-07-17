@@ -6,6 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# Cloudflare WARP tools (userspace SOCKS) — routes yt-dlp off blocked datacenter IPs
+ARG WGCF_VERSION=2.2.22
+ARG WIREPROXY_VERSION=1.0.9
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
@@ -13,11 +17,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     libpq5 \
     nodejs \
+    iproute2 \
     && rm -rf /var/lib/apt/lists/* \
     # Deno is yt-dlp's default JS runtime for YouTube EJS challenges
-    # (without it: "No video formats found" on modern YouTube)
     && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
-    && deno --version
+    && deno --version \
+    # wgcf: generate free WARP WireGuard credentials
+    && curl -fsSL -o /usr/local/bin/wgcf \
+      "https://github.com/ViRb3/wgcf/releases/download/v${WGCF_VERSION}/wgcf_${WGCF_VERSION}_linux_amd64" \
+    && chmod +x /usr/local/bin/wgcf \
+    # wireproxy: userspace WireGuard → local SOCKS5 (no root/NET_ADMIN)
+    && curl -fsSL -o /tmp/wireproxy.tgz \
+      "https://github.com/pufferffish/wireproxy/releases/download/v${WIREPROXY_VERSION}/wireproxy_linux_amd64.tar.gz" \
+    && tar -xzf /tmp/wireproxy.tgz -C /tmp \
+    && mv /tmp/wireproxy /usr/local/bin/wireproxy \
+    && chmod +x /usr/local/bin/wireproxy \
+    && rm -f /tmp/wireproxy.tgz \
+    && wgcf --help >/dev/null \
+    && wireproxy -h >/dev/null 2>&1 || true
 
 
 WORKDIR /app
@@ -34,7 +51,7 @@ FROM base AS runtime
 COPY --from=builder /install /usr/local
 COPY . /app
 
-RUN mkdir -p /app/media/downloads /app/media/thumbnails /app/media/avatars /app/staticfiles /app/logs \
+RUN mkdir -p /app/media/downloads /app/media/thumbnails /app/media/avatars /app/staticfiles /app/logs /app/warp \
     && useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app
 
@@ -49,7 +66,7 @@ RUN python manage.py collectstatic --noinput \
 
 # Ensure start scripts are executable (Render dockerCommand uses bash)
 RUN chmod +x /app/scripts/*.sh 2>/dev/null || true \
-    && chown -R appuser:appuser /app
+    && chown -R appuser:appuser /app /app/warp
 
 USER appuser
 
