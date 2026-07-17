@@ -67,7 +67,17 @@ class DownloadService:
             friendly = humanize_ytdlp_error(exc)
             logger.warning("Metadata extraction failed for %s: %s", url, exc)
             code = "metadata_failed"
-            if "bot" in friendly.lower() or "cookies" in friendly.lower():
+            low = friendly.lower()
+            if any(
+                k in low
+                for k in (
+                    "bot",
+                    "cookies",
+                    "blocked this server",
+                    "ip address is blocked",
+                    "sign in to confirm",
+                )
+            ):
                 code = "youtube_bot"
             raise DownloadServiceError(friendly, code=code) from exc
 

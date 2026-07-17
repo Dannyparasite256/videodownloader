@@ -832,17 +832,23 @@ def humanize_ytdlp_error(exc: BaseException) -> str:
     """Map common yt-dlp errors to user-facing guidance."""
     msg = str(exc)
     low = msg.lower()
+    if "ip address is blocked" in low:
+        return (
+            "This cloud server’s IP is blocked by the site. "
+            "Run VideoDL on your home PC instead (start-videodl.bat) — no cookies needed."
+        )
     if (
         "sign in to confirm" in low
         or "not a bot" in low
         or "cookies-from-browser" in low
         or "failed to decrypt with dpapi" in low
         or "no longer valid" in low
+        or "blocked this server" in low
     ):
         return (
-            "YouTube temporarily blocked this server IP. "
-            "Try again in a minute, try another public video, or run the app on your home PC "
-            "(residential IP works better). Cookie-free mobile clients are used automatically."
+            "YouTube is blocking this cloud server’s IP (not a missing-cookie problem). "
+            "Use your home PC: double-click start-videodl.bat → http://127.0.0.1:4000 "
+            "(cookie-free). For phone/anywhere: start-videodl-public.bat."
         )
     if "no video formats found" in low or "formats may be missing" in low:
         return (
