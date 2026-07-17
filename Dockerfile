@@ -9,9 +9,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
+    ca-certificates \
+    unzip \
     libpq5 \
     nodejs \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # Deno is yt-dlp's default JS runtime for YouTube EJS challenges
+    # (without it: "No video formats found" on modern YouTube)
+    && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
+    && deno --version
 
 
 WORKDIR /app

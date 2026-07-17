@@ -23,6 +23,9 @@
         <span class="rounded-full bg-amber-500/15 px-2.5 py-1 text-amber-600 dark:text-amber-400 font-semibold">not configured — YouTube will fail</span>
       {% endif %}
     </p>
+    {% if cookies_quality_message %}
+    <p class="mt-2 text-xs text-slate-500">{{ cookies_quality_message }}</p>
+    {% endif %}
     <ol class="mt-4 text-sm text-slate-600 dark:text-slate-400 list-decimal pl-5 space-y-2">
       <li>Chrome/Edge → open <strong>youtube.com</strong> and <strong>log in</strong></li>
       <li>Install extension <strong>Get cookies.txt LOCALLY</strong></li>

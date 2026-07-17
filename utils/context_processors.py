@@ -13,12 +13,25 @@ def site_settings(request: HttpRequest) -> dict[str, Any]:
 
     cookies_ok = False
     try:
+        from utils.cookie_utils import cookie_file_quality, cookie_jar_quality
+
         p = Path(settings.BASE_DIR) / "secrets" / "cookies.txt"
-        cookies_ok = p.is_file() and p.stat().st_size > 32
+        cookies_ok = cookie_file_quality(p)["ok"]
+        if not cookies_ok:
+            # Env base64 may be present before file materializes
+            b64 = (getattr(settings, "YTDLP_COOKIES_BASE64", "") or "").strip()
+            if b64:
+                import base64
+
+                try:
+                    raw = base64.b64decode(b64)
+                    cookies_ok = cookie_jar_quality(
+                        raw.decode("utf-8", errors="replace")
+                    )["ok"]
+                except Exception:
+                    cookies_ok = False
     except Exception:
         cookies_ok = False
-    if not cookies_ok:
-        cookies_ok = bool(getattr(settings, "YTDLP_COOKIES_BASE64", ""))
 
     return {
         "SITE_NAME": getattr(settings, "SITE_NAME", "VideoDL Pro"),

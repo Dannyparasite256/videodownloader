@@ -78,7 +78,11 @@ def settings_view(request: HttpRequest) -> HttpResponse:
 
     from django.conf import settings as dj_settings
 
+    from utils.cookie_utils import cookie_file_quality
+
     cookie_path = Path(dj_settings.BASE_DIR) / "secrets" / "cookies.txt"
+    quality = cookie_file_quality(cookie_path)
+    # Env base64 alone is not enough if the jar is weak — report real quality
     return render(
         request,
         "accounts/settings.html",
@@ -86,7 +90,8 @@ def settings_view(request: HttpRequest) -> HttpResponse:
             "api_keys": request.user.api_keys.filter(is_active=True),
             "activity": request.user.activity_logs.all()[:20],
             "can_upload_cookies": request.user.is_staff or dj_settings.DEBUG,
-            "cookies_configured": cookie_path.is_file() and cookie_path.stat().st_size > 32,
+            "cookies_configured": quality["ok"],
+            "cookies_quality_message": quality["message"],
             "cookies_path": str(cookie_path),
         },
     )
@@ -100,6 +105,8 @@ def upload_youtube_cookies(request: HttpRequest) -> HttpResponse:
 
     from django.conf import settings as dj_settings
     from django.contrib import messages
+
+    from utils.cookie_utils import cookie_jar_quality
 
     if not (request.user.is_staff or dj_settings.DEBUG):
         messages.error(request, "Only staff can upload YouTube cookies.")
@@ -123,6 +130,15 @@ def upload_youtube_cookies(request: HttpRequest) -> HttpResponse:
                 "That file does not look like a Netscape cookies.txt export.",
             )
             return redirect("accounts:settings")
+
+    quality = cookie_jar_quality(text)
+    if not quality["ok"]:
+        messages.error(
+            request,
+            quality["message"]
+            + " Export from youtube.com while logged in (must include LOGIN_INFO / SID).",
+        )
+        return redirect("accounts:settings")
 
     dest_dir = Path(dj_settings.BASE_DIR) / "secrets"
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -155,8 +171,8 @@ def upload_youtube_cookies(request: HttpRequest) -> HttpResponse:
 
     messages.success(
         request,
-        "YouTube cookies saved. Try Analyze again. On free Render, also set env "
-        "YTDLP_COOKIES_BASE64 so cookies survive sleep (see SET-RENDER-YOUTUBE-COOKIES.bat).",
+        f"YouTube cookies saved ({quality['message']}). Try Analyze again. "
+        "On free Render, also set env YTDLP_COOKIES_BASE64 so cookies survive sleep.",
     )
     return redirect("accounts:settings")
 

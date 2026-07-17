@@ -171,6 +171,24 @@ class DownloadEngine:
                 logger.warning("extract_metadata attempt failed: %s", exc)
                 continue
 
+        # Stale/invalid cookies often make cloud bot checks worse — retry without them
+        if info is None and last_exc and base.get("cookiefile"):
+            low = str(last_exc).lower()
+            if "sign in to confirm" in low or "not a bot" in low:
+                bare = dict(attempts[0])
+                bare.pop("cookiefile", None)
+                bare["extractor_args"] = {
+                    "youtube": {"player_client": ["android", "ios", "tv_embedded", "mweb"]}
+                }
+                try:
+                    with yt_dlp.YoutubeDL(bare) as ydl:
+                        info = ydl.extract_info(url, download=False)
+                    if info is not None:
+                        logger.info("extract_metadata succeeded without cookies (fallback)")
+                except Exception as exc:
+                    last_exc = exc
+                    logger.warning("extract_metadata cookie-less fallback failed: %s", exc)
+
         if info is None:
             if last_exc:
                 raise last_exc
@@ -683,8 +701,10 @@ class DownloadEngine:
                     "player_client": player_clients,
                 }
             },
-            # Required for current YouTube JS challenges (formats missing without this)
-            "remote_components": {"ejs:github"},
+            # YouTube n/sig challenges need a real JS runtime (deno preferred, node fallback)
+            "js_runtimes": {"deno": {}, "node": {}},
+            # Allow fetching EJS solver scripts when yt-dlp-ejs needs updates
+            "remote_components": ["ejs:github"],
             # Free Render OOM protection: fewer parallel fragment downloads
             "concurrent_fragment_downloads": 1 if free else 4,
             "http_headers": {
@@ -791,6 +811,13 @@ def humanize_ytdlp_error(exc: BaseException) -> str:
     """Map common yt-dlp errors to user-facing guidance."""
     msg = str(exc)
     low = msg.lower()
+    if "no longer valid" in low or "cookies are no longer valid" in low:
+        return (
+            "Your YouTube cookies expired (browser rotated the session). "
+            "Log into YouTube in Chrome again → re-export a FRESH cookies.txt "
+            "(extension “Get cookies.txt LOCALLY” on youtube.com) → Settings → "
+            "Upload cookies. On Render also update YTDLP_COOKIES_BASE64 and redeploy."
+        )
     if (
         "sign in to confirm" in low
         or "not a bot" in low
@@ -799,10 +826,16 @@ def humanize_ytdlp_error(exc: BaseException) -> str:
     ):
         return (
             "YouTube is blocking this cloud server (bot check). "
-            "Fix: log into YouTube in Chrome → export Netscape cookies.txt "
-            "(extension “Get cookies.txt LOCALLY”) → open this site → Settings → "
-            "YouTube cookies → Upload. Or set YTDLP_COOKIES_BASE64 on Render. "
-            "Status must show “configured” before Analyze will work for YouTube."
+            "Cookies on the server are missing, incomplete, or expired. "
+            "Fix: log into YouTube in Chrome → export a FRESH Netscape cookies.txt "
+            "(must include LOGIN_INFO and SID) → Settings → YouTube cookies → Upload, "
+            "then set YTDLP_COOKIES_BASE64 on Render and redeploy. "
+            "If it still fails, use the home PC app (residential IP) — cloud IPs are often blocked."
+        )
+    if "no video formats found" in low or "formats may be missing" in low:
+        return (
+            "YouTube returned no playable formats (JS challenge / player update). "
+            "The server needs Deno/Node for yt-dlp. Redeploy the latest image, or try again later."
         )
     if "private video" in low or "login required" in low:
         return "This video is private or requires login. It cannot be downloaded without permission."
