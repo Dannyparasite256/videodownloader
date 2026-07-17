@@ -27,16 +27,18 @@ mkdir -p \
   /app/staticfiles \
   /app/warp || true
 
-# Cloudflare WARP SOCKS proxy — YouTube blocks raw Render/datacenter IPs.
-# Traffic exits via WARP so Analyze/Download work without the user's PC.
-if [[ "${ENABLE_WARP_PROXY:-True}" == "True" || "${ENABLE_WARP_PROXY:-true}" == "true" || "${ENABLE_WARP_PROXY:-1}" == "1" ]]; then
-  echo "[render] starting WARP SOCKS proxy…"
-  bash /app/scripts/start_warp_proxy.sh || echo "[render] WARP proxy failed — YouTube may still block this IP"
+# Cloudflare WARP SOCKS — YouTube blocks raw Render/datacenter IPs.
+# Keep this short so free-tier health checks still pass during boot.
+if [[ "${ENABLE_WARP_PROXY:-True}" =~ ^(True|true|1|yes|YES)$ ]]; then
+  echo "[render] starting WARP SOCKS proxy (async-safe)…"
+  timeout 45 bash /app/scripts/start_warp_proxy.sh || echo "[render] WARP setup timed out/skipped"
   if [[ -f /app/warp/env.sh ]]; then
     # shellcheck disable=SC1091
-    source /app/warp/env.sh
-    echo "[render] YTDLP_PROXY=${YTDLP_PROXY:-unset}"
+    source /app/warp/env.sh || true
   fi
+  # Default proxy target even if env.sh missing (wireproxy may still be warming)
+  export YTDLP_PROXY="${YTDLP_PROXY:-socks5://127.0.0.1:1080}"
+  echo "[render] YTDLP_PROXY=${YTDLP_PROXY}"
 fi
 
 # Durable YouTube cookies: set YTDLP_COOKIES_BASE64 in Render Dashboard → Environment
