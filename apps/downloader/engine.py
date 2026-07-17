@@ -141,22 +141,35 @@ class DownloadEngine:
         import yt_dlp
 
         platform = detect_platform(url)
-        base = self._base_opts()
-        attempts: list[dict[str, Any]] = [
-            {
-                **base,
-                "quiet": True,
-                "no_warnings": True,
-                "skip_download": True,
-                "extract_flat": "in_playlist" if process_playlist else False,
-                "noplaylist": not process_playlist,
-            }
+        base = self._base_opts(use_cookies=False)  # cookie-free first
+        common = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "extract_flat": "in_playlist" if process_playlist else False,
+            "noplaylist": not process_playlist,
+        }
+        # Ordered attempts: progressive mobile clients work without cookies
+        client_sets = [
+            ["android", "ios", "mweb"],
+            ["android"],
+            ["ios", "mweb"],
+            ["web_embedded", "mweb", "android"],
         ]
-        # Fallback: if we have cookies, also try pure web client only
-        if base.get("cookiefile"):
-            web_only = dict(attempts[0])
-            web_only["extractor_args"] = {"youtube": {"player_client": ["web", "mweb"]}}
-            attempts.append(web_only)
+        attempts: list[dict[str, Any]] = []
+        for clients in client_sets:
+            opts = {**base, **common}
+            opts["extractor_args"] = {"youtube": {"player_client": clients}}
+            attempts.append(opts)
+
+        # Optional cookie path only if explicitly enabled
+        if getattr(settings, "YTDLP_USE_COOKIES", False):
+            with_cookies = self._base_opts(use_cookies=True)
+            opts = {**with_cookies, **common}
+            opts["extractor_args"] = {
+                "youtube": {"player_client": ["web", "mweb", "android"]}
+            }
+            attempts.append(opts)
 
         info = None
         last_exc: BaseException | None = None
@@ -165,29 +178,15 @@ class DownloadEngine:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
                 if info is not None:
-                    break
+                    fmts = info.get("formats") or []
+                    # Prefer attempts that actually returned playable formats
+                    if fmts or info.get("url") or info.get("_type") == "playlist":
+                        break
+                    info = None
             except Exception as exc:
                 last_exc = exc
                 logger.warning("extract_metadata attempt failed: %s", exc)
                 continue
-
-        # Stale/invalid cookies often make cloud bot checks worse — retry without them
-        if info is None and last_exc and base.get("cookiefile"):
-            low = str(last_exc).lower()
-            if "sign in to confirm" in low or "not a bot" in low:
-                bare = dict(attempts[0])
-                bare.pop("cookiefile", None)
-                bare["extractor_args"] = {
-                    "youtube": {"player_client": ["android", "ios", "tv_embedded", "mweb"]}
-                }
-                try:
-                    with yt_dlp.YoutubeDL(bare) as ydl:
-                        info = ydl.extract_info(url, download=False)
-                    if info is not None:
-                        logger.info("extract_metadata succeeded without cookies (fallback)")
-                except Exception as exc:
-                    last_exc = exc
-                    logger.warning("extract_metadata cookie-less fallback failed: %s", exc)
 
         if info is None:
             if last_exc:
@@ -347,7 +346,8 @@ class DownloadEngine:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        ydl_opts = self._base_opts()
+        # Cookie-free first; progressive formats (18/22/best) survive when DASH needs PO tokens
+        ydl_opts = self._base_opts(use_cookies=False)
         outtmpl = str(output_dir / filename_template)
         ydl_opts.update(
             {
@@ -357,7 +357,6 @@ class DownloadEngine:
                 "noplaylist": noplaylist,
                 "continuedl": True,
                 "overwrites": False,
-                # Ensure progress hooks fire even when quiet
                 "noprogress": False,
             }
         )
@@ -399,10 +398,37 @@ class DownloadEngine:
             ydl_opts["skip_download"] = True
             ydl_opts["writethumbnail"] = True
 
-        logger.info("Starting download", extra={"url": url, "mode": mode, "quality": quality})
+        logger.info(
+            "Starting cookie-free download url=%s mode=%s quality=%s",
+            url,
+            mode,
+            quality,
+        )
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+        last_exc: BaseException | None = None
+        info = None
+        # Retry with alternate client sets if the first fails
+        client_sets = [
+            ["android", "ios", "mweb"],
+            ["android"],
+            ["mweb", "ios"],
+        ]
+        for clients in client_sets:
+            ydl_opts["extractor_args"] = {"youtube": {"player_client": clients}}
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                if info is not None:
+                    break
+            except Exception as exc:
+                last_exc = exc
+                logger.warning("download attempt clients=%s failed: %s", clients, exc)
+                continue
+
+        if info is None and last_exc:
+            raise last_exc
+        if info is None:
+            raise ValueError("Download produced no result")
 
         if self.cancel_check and self.cancel_check():
             raise InterruptedError("Download cancelled")
@@ -411,33 +437,33 @@ class DownloadEngine:
 
     def _build_format_string(self, mode: str, quality: str, format_id: str) -> str:
         if format_id:
-            return format_id
+            # Always fall back to progressive best if the selected id is gone
+            return f"{format_id}/best/18/22"
 
         if mode == "audio_only":
-            return "bestaudio/best"
+            return "bestaudio/best/140/18"
 
         if mode == "video_only":
             if quality in ("best", "highest"):
-                return "bestvideo/best"
+                return "bestvideo/best/18"
             if quality in ("worst", "lowest"):
-                return "worstvideo/worst"
+                return "worstvideo/worst/18"
             if quality.isdigit():
-                return f"bestvideo[height<={quality}]/bestvideo/best"
-            return "bestvideo/best"
+                return f"bestvideo[height<={quality}]/bestvideo/best/18"
+            return "bestvideo/best/18"
 
-        # video_audio (default)
-        if quality in ("best", "highest", "original"):
-            return "bv*+ba/b"
+        # video_audio — prefer progressive muxed formats (no DASH merge / PO token)
+        # so cookie-free android clients work. Fall back to separate streams if needed.
         if quality in ("worst", "lowest"):
-            return "wv*+wa/w"
+            return "worst/18"
         if quality.isdigit():
             h = quality
             return (
-                f"bv*[height<={h}]+ba/b[height<={h}]/"
-                f"bv*+ba/b"
+                f"best[height<={h}]/bestvideo[height<={h}]+bestaudio/"
+                f"best/18/22"
             )
-        return "bv*+ba/b"
-
+        # best / highest / original / default
+        return "best/bestvideo+bestaudio/18/22/b"
     def _build_postprocessors(
         self,
         *,
@@ -668,20 +694,26 @@ class DownloadEngine:
         except OSError:
             return ""
 
-    def _base_opts(self) -> dict[str, Any]:
-        # Resolve cookies FIRST — client choice depends on whether we have them.
-        resolved = self._resolve_cookiefile()
-        free = getattr(settings, "RENDER_FREE_TIER", False)
+    def _base_opts(self, *, use_cookies: bool | None = None) -> dict[str, Any]:
+        """
+        yt-dlp options.
 
-        # With cookies: prefer "web" so the logged-in session is actually used.
-        # Without cookies: mobile/TV clients (often better for anonymous, still often
-        # blocked on datacenter IPs for YouTube).
-        if resolved:
-            player_clients = ["web", "web_safari", "mweb", "android", "ios"]
-        elif free:
-            player_clients = ["android", "ios", "mweb", "tv_embedded"]
-        else:
-            player_clients = ["android", "ios", "tv_embedded", "mweb", "web"]
+        Default is cookie-free mobile clients (android/ios/mweb). Stale browser
+        cookies often make YouTube bot-checks *worse* on cloud IPs, so cookies
+        are only used when YTDLP_USE_COOKIES is True and use_cookies is not False.
+        """
+        free = getattr(settings, "RENDER_FREE_TIER", False)
+        if use_cookies is None:
+            use_cookies = bool(getattr(settings, "YTDLP_USE_COOKIES", False))
+
+        # Cookie-free path: progressive formats via mobile clients (works without PO tokens
+        # more often than web + cookies on datacenter IPs).
+        player_clients = ["android", "ios", "mweb"]
+        resolved = None
+        if use_cookies:
+            resolved = self._resolve_cookiefile()
+            if resolved:
+                player_clients = ["web", "mweb", "android", "ios"]
 
         opts: dict[str, Any] = {
             "socket_timeout": getattr(settings, "YTDLP_SOCKET_TIMEOUT", 30),
@@ -692,29 +724,24 @@ class DownloadEngine:
             "geo_bypass": True,
             "quiet": True,
             "no_warnings": True,
-            # Legal: do not bypass DRM
             "allow_unplayable_formats": False,
-            # Prefer ffmpeg for merge
             "merge_output_format": "mp4",
             "extractor_args": {
                 "youtube": {
                     "player_client": player_clients,
                 }
             },
-            # YouTube n/sig challenges need a real JS runtime (deno preferred, node fallback)
             "js_runtimes": {"deno": {}, "node": {}},
-            # Allow fetching EJS solver scripts when yt-dlp-ejs needs updates
             "remote_components": ["ejs:github"],
-            # Free Render OOM protection: fewer parallel fragment downloads
             "concurrent_fragment_downloads": 1 if free else 4,
             "http_headers": {
                 "User-Agent": getattr(
                     settings,
                     "YTDLP_USER_AGENT",
                     (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "Mozilla/5.0 (Linux; Android 13) "
                         "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/131.0.0.0 Safari/537.36"
+                        "Chrome/131.0.0.0 Mobile Safari/537.36"
                     ),
                 ),
                 "Accept-Language": "en-US,en;q=0.9",
@@ -730,11 +757,10 @@ class DownloadEngine:
                 player_clients,
             )
         else:
-            logger.warning("yt-dlp: no YouTube cookies file — cloud YouTube likely fails")
+            logger.info("yt-dlp cookie-free mode clients=%s", player_clients)
 
-        # Local/dev only: pull cookies from an installed browser profile
         browser = getattr(settings, "YTDLP_COOKIES_FROM_BROWSER", "") or ""
-        if browser and "cookiefile" not in opts:
+        if use_cookies and browser and "cookiefile" not in opts:
             parts = browser.split(":", 1)
             if len(parts) == 2:
                 opts["cookiesfrombrowser"] = (parts[0].strip(), parts[1].strip(), None, None)
@@ -746,8 +772,11 @@ class DownloadEngine:
 
     @staticmethod
     def _resolve_cookiefile() -> Path | None:
-        """Find or materialize a Netscape cookies.txt for yt-dlp."""
+        """Find a Netscape cookies.txt only when cookies are enabled."""
         import base64
+
+        if not getattr(settings, "YTDLP_USE_COOKIES", False):
+            return None
 
         cookiefile = getattr(settings, "YTDLP_COOKIES_FILE", "") or ""
         base = Path(getattr(settings, "BASE_DIR", Path.cwd()))
@@ -765,15 +794,10 @@ class DownloadEngine:
         if resolved:
             return resolved
 
-        # Re-hydrate from env (survives free Render sleep) or DB (survives restarts while disk lives)
-        b64 = (getattr(settings, "YTDLP_COOKIES_BASE64", "") or os.environ.get("YTDLP_COOKIES_BASE64", "")).strip()
-        if not b64:
-            try:
-                from apps.accounts.models import SiteSecret
-
-                b64 = (SiteSecret.get_value("youtube_cookies_b64") or "").strip()
-            except Exception:
-                b64 = ""
+        b64 = (
+            getattr(settings, "YTDLP_COOKIES_BASE64", "")
+            or os.environ.get("YTDLP_COOKIES_BASE64", "")
+        ).strip()
         if not b64:
             return None
         try:
@@ -782,23 +806,20 @@ class DownloadEngine:
             try:
                 raw = base64.urlsafe_b64decode(b64 + "==")
             except Exception:
-                logger.warning("Cookie base64 is not valid")
                 return None
         if len(raw) < 32:
             return None
         secrets_dir = base / "secrets"
         try:
             secrets_dir.mkdir(parents=True, exist_ok=True)
-            dest = secrets_dir / "cookies.txt"
+            dest = secrets_dir / "cookies.from_env.txt"
             dest.write_bytes(raw)
             try:
                 dest.chmod(0o600)
             except OSError:
                 pass
-            logger.info("Wrote cookies from env/DB (%s bytes)", len(raw))
             return dest
-        except OSError as exc:
-            logger.warning("Could not write cookies file: %s", exc)
+        except OSError:
             return None
 
 
@@ -811,31 +832,22 @@ def humanize_ytdlp_error(exc: BaseException) -> str:
     """Map common yt-dlp errors to user-facing guidance."""
     msg = str(exc)
     low = msg.lower()
-    if "no longer valid" in low or "cookies are no longer valid" in low:
-        return (
-            "Your YouTube cookies expired (browser rotated the session). "
-            "Log into YouTube in Chrome again → re-export a FRESH cookies.txt "
-            "(extension “Get cookies.txt LOCALLY” on youtube.com) → Settings → "
-            "Upload cookies. On Render also update YTDLP_COOKIES_BASE64 and redeploy."
-        )
     if (
         "sign in to confirm" in low
         or "not a bot" in low
         or "cookies-from-browser" in low
         or "failed to decrypt with dpapi" in low
+        or "no longer valid" in low
     ):
         return (
-            "YouTube is blocking this cloud server (bot check). "
-            "Cookies on the server are missing, incomplete, or expired. "
-            "Fix: log into YouTube in Chrome → export a FRESH Netscape cookies.txt "
-            "(must include LOGIN_INFO and SID) → Settings → YouTube cookies → Upload, "
-            "then set YTDLP_COOKIES_BASE64 on Render and redeploy. "
-            "If it still fails, use the home PC app (residential IP) — cloud IPs are often blocked."
+            "YouTube temporarily blocked this server IP. "
+            "Try again in a minute, try another public video, or run the app on your home PC "
+            "(residential IP works better). Cookie-free mobile clients are used automatically."
         )
     if "no video formats found" in low or "formats may be missing" in low:
         return (
-            "YouTube returned no playable formats (JS challenge / player update). "
-            "The server needs Deno/Node for yt-dlp. Redeploy the latest image, or try again later."
+            "YouTube returned no playable formats right now. "
+            "Try again shortly, pick a different quality, or use another public link."
         )
     if "private video" in low or "login required" in low:
         return "This video is private or requires login. It cannot be downloaded without permission."

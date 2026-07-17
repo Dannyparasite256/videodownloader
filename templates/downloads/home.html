@@ -23,19 +23,11 @@
     </p>
   </div>
 
-  {% if IS_RENDER and not YOUTUBE_COOKIES_OK %}
-  <div class="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-left text-sm text-amber-800 dark:text-amber-200">
-    <strong>Render cloud:</strong> YouTube needs cookies.
-    Admin → <a class="underline font-semibold" href="{% url 'accounts:settings' %}">Settings → YouTube cookies</a>
-    (or set env <code class="text-xs">YTDLP_COOKIES_BASE64</code>).
-    TikTok, Instagram, X, Vimeo often work without cookies.
-  </div>
-  {% elif IS_RENDER %}
+  {% if IS_RENDER %}
   <div class="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-left text-sm text-emerald-800 dark:text-emerald-200">
-    Running on Render free tier — one download at a time. First open after sleep can be slow.
+    Cookie-free mode — no YouTube login cookies required. Free tier: one download at a time; first open after sleep can be slow.
   </div>
   {% endif %}
-
   {# Signature command bar #}
   <div
     class="hero-shell glass-strong mt-9 animate-slide-up"

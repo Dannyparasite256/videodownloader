@@ -478,9 +478,9 @@ DOWNLOAD_EXPIRY_DAYS = env.int("DOWNLOAD_EXPIRY_DAYS", default=7)
 GUEST_MAX_DOWNLOADS_PER_DAY = env.int("GUEST_MAX_DOWNLOADS_PER_DAY", default=5)
 USER_STORAGE_QUOTA_MB = env.int("USER_STORAGE_QUOTA_MB", default=5120)
 
-# YouTube often requires browser cookies on cloud IPs ("Sign in to confirm you're not a bot").
-# Priority: YTDLP_COOKIES_FILE → secrets/cookies.txt → YTDLP_COOKIES_BASE64 → browser.
-# See docs/YOUTUBE_COOKIES.md
+# Cookie-free by default: mobile/TV YouTube clients work without browser cookies.
+# Set YTDLP_USE_COOKIES=True only if you intentionally want cookie auth.
+YTDLP_USE_COOKIES = env.bool("YTDLP_USE_COOKIES", default=False)
 YTDLP_COOKIES_FILE = env("YTDLP_COOKIES_FILE", default="")
 YTDLP_COOKIES_FROM_BROWSER = env("YTDLP_COOKIES_FROM_BROWSER", default="")
 YTDLP_COOKIES_BASE64 = env("YTDLP_COOKIES_BASE64", default="")
@@ -493,40 +493,39 @@ YTDLP_USER_AGENT = env(
     ),
 )
 
-# Auto-detect project secrets/cookies.txt if no path set
-if not YTDLP_COOKIES_FILE:
-    for candidate in (
-        BASE_DIR / "secrets" / "cookies.txt",
-        BASE_DIR / "cookies.txt",
-    ):
-        if candidate.is_file() and candidate.stat().st_size > 0:
-            YTDLP_COOKIES_FILE = str(candidate)
-            break
+# Only materialize cookie files when cookies are explicitly enabled
+if YTDLP_USE_COOKIES:
+    if not YTDLP_COOKIES_FILE:
+        for candidate in (
+            BASE_DIR / "secrets" / "cookies.txt",
+            BASE_DIR / "cookies.txt",
+        ):
+            if candidate.is_file() and candidate.stat().st_size > 0:
+                YTDLP_COOKIES_FILE = str(candidate)
+                break
 
-if YTDLP_COOKIES_BASE64 and not YTDLP_COOKIES_FILE:
-    import base64
-    import tempfile
+    if YTDLP_COOKIES_BASE64 and not YTDLP_COOKIES_FILE:
+        import base64
 
-    try:
-        raw = base64.b64decode(YTDLP_COOKIES_BASE64)
-        # Accept URL-safe base64 and whitespace
-        if not raw:
-            raw = base64.urlsafe_b64decode(YTDLP_COOKIES_BASE64 + "==")
-        secrets_dir = BASE_DIR / "secrets"
-        secrets_dir.mkdir(exist_ok=True)
-        cookie_path = secrets_dir / "cookies.from_env.txt"
-        cookie_path.write_bytes(raw)
         try:
-            os.chmod(cookie_path, 0o600)
-        except OSError:
-            pass
-        YTDLP_COOKIES_FILE = str(cookie_path)
-    except Exception:
-        YTDLP_COOKIES_FILE = ""
-
-# Do NOT auto-enable cookies-from-browser: on modern Chrome (Windows) it often
-# fails with DPAPI / app-bound encryption and breaks extraction entirely.
-# Prefer secrets/cookies.txt or YTDLP_COOKIES_BASE64 (see docs/YOUTUBE_COOKIES.md).
+            raw = base64.b64decode(YTDLP_COOKIES_BASE64)
+            if not raw:
+                raw = base64.urlsafe_b64decode(YTDLP_COOKIES_BASE64 + "==")
+            secrets_dir = BASE_DIR / "secrets"
+            secrets_dir.mkdir(exist_ok=True)
+            cookie_path = secrets_dir / "cookies.from_env.txt"
+            cookie_path.write_bytes(raw)
+            try:
+                os.chmod(cookie_path, 0o600)
+            except OSError:
+                pass
+            YTDLP_COOKIES_FILE = str(cookie_path)
+        except Exception:
+            YTDLP_COOKIES_FILE = ""
+else:
+    # Ignore any on-disk / env cookies so stale sessions cannot trigger bot checks
+    YTDLP_COOKIES_FILE = ""
+    YTDLP_COOKIES_FROM_BROWSER = ""
 
 # Legal notice – respect ToS and copyright
 DOWNLOAD_DISCLAIMER = (
