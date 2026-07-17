@@ -149,12 +149,12 @@ class DownloadEngine:
             "extract_flat": "in_playlist" if process_playlist else False,
             "noplaylist": not process_playlist,
         }
-        # Ordered attempts: progressive mobile clients work without cookies
+        # Ordered attempts: mobile/embedded clients work without cookies (no PO token)
         client_sets = [
-            ["android", "ios", "mweb"],
+            ["android_vr", "android_music", "android", "web_embedded"],
+            ["mediaconnect", "android", "ios", "mweb"],
             ["android"],
-            ["ios", "mweb"],
-            ["web_embedded", "mweb", "android"],
+            ["web_embedded", "mweb"],
         ]
         attempts: list[dict[str, Any]] = []
         for clients in client_sets:
@@ -409,9 +409,9 @@ class DownloadEngine:
         info = None
         # Retry with alternate client sets if the first fails
         client_sets = [
-            ["android", "ios", "mweb"],
+            ["android_vr", "android_music", "android", "web_embedded"],
+            ["mediaconnect", "android", "mweb"],
             ["android"],
-            ["mweb", "ios"],
         ]
         for clients in client_sets:
             ydl_opts["extractor_args"] = {"youtube": {"player_client": clients}}
@@ -708,7 +708,7 @@ class DownloadEngine:
 
         # Cookie-free path: progressive formats via mobile clients (works without PO tokens
         # more often than web + cookies on datacenter IPs).
-        player_clients = ["android", "ios", "mweb"]
+        player_clients = ["android_vr", "android_music", "android", "web_embedded", "mweb"]
         resolved = None
         if use_cookies:
             resolved = self._resolve_cookiefile()
