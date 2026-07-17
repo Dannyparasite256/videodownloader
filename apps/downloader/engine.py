@@ -763,6 +763,13 @@ class DownloadEngine:
             opts["source_address"] = "0.0.0.0"
 
         # SOCKS/HTTP proxy (Cloudflare WARP on Render: socks5://127.0.0.1:1080)
+        # Lazy-start WARP on first YouTube use so free-tier boot/health stays light.
+        try:
+            from utils.warp_proxy import ensure_warp_proxy
+
+            ensure_warp_proxy()
+        except Exception:
+            pass
         proxy = (getattr(settings, "YTDLP_PROXY", "") or os.environ.get("YTDLP_PROXY", "")).strip()
         if proxy:
             opts["proxy"] = proxy

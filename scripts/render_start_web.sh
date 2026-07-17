@@ -27,14 +27,11 @@ mkdir -p \
   /app/staticfiles \
   /app/warp || true
 
-# Cloudflare WARP SOCKS — YouTube blocks raw Render/datacenter IPs.
-# Start fully in the background so health checks are never blocked on free tier.
+# WARP is started lazily by Django on first YouTube request (saves free-tier RAM
+# during boot so health checks pass). Pre-set the proxy URL yt-dlp will use.
 if [[ "${ENABLE_WARP_PROXY:-True}" =~ ^(True|true|1|yes|YES)$ ]]; then
   export YTDLP_PROXY="${YTDLP_PROXY:-socks5://127.0.0.1:1080}"
-  echo "[render] WARP proxy target YTDLP_PROXY=${YTDLP_PROXY} (starting in background)"
-  (
-    bash /app/scripts/start_warp_proxy.sh >>/app/warp/boot.log 2>&1 || true
-  ) &
+  echo "[render] WARP lazy mode — proxy ${YTDLP_PROXY} (starts on first YouTube use)"
 fi
 
 # Durable YouTube cookies: set YTDLP_COOKIES_BASE64 in Render Dashboard → Environment
